@@ -4,7 +4,12 @@ on:
   schedule:
     - cron: "17 */2 * * *"  # every 2 hours at :17 UTC (off the busy top of the hour). GitHub may start it late.
     - cron: "23 6 * * *"    # daily accuracy report
-  workflow_dispatch: {}     # adds a "Run workflow" button for manual runs
+  workflow_dispatch:        # the "Run workflow" button, and the outside timer (cron-job.org)
+    inputs:
+      report:
+        description: "Send the accuracy report instead of predictions"
+        type: boolean
+        default: false
 
 permissions:
   contents: write           # lets the job save data/ to the bot-data branch
@@ -39,7 +44,7 @@ jobs:
           fi
 
       - name: Predict and send to Telegram
-        if: github.event.schedule != '23 6 * * *'
+        if: ${{ github.event.schedule != '23 6 * * *' && inputs.report != true }}
         run: npm start
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -59,7 +64,7 @@ jobs:
           ESPORTS_TIERS: ${{ vars.ESPORTS_TIERS }}
 
       - name: Accuracy report
-        if: github.event.schedule == '23 6 * * *' || github.event_name == 'workflow_dispatch'
+        if: ${{ github.event.schedule == '23 6 * * *' || inputs.report == true }}
         run: npm run results
         env:
           SEND_REPORT: "1"
