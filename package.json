@@ -1,0 +1,24 @@
+{
+  "name": "sports-predictor",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Free sports match digest and value-bet finder that sends to Telegram",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "dry": "DRY_RUN=1 tsx src/main.ts",
+    "results": "tsx src/results.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "telegram:chatid": "tsx src/notify/getChatId.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,128 @@
+import { config } from "../config.ts";
+import type { Prediction, Probabilities } from "../types.ts";
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const pct = (p: number) => `${Math.round(p * 100)}%`;
+const hhmm = (d: Date) => d.toISOString().slice(11, 16);
+const ICON: Record<string, string> = { nba: "🏀", wnba: "🏀", basketball: "🏀", football: "⚽", tennis: "🎾", dota2: "🎮", cs2: "🔫" };
+/** Telegram's limit is 4096 characters; leave room for HTML entities. */
+const MAX_LEN = 3800;
+
+function probLine(p: Prediction, pr: Probabilities): string {
+  const m = p.match;
+  const A = esc(m.home.name), B = esc(m.away.name);
+  return m.hasDraw ? `${A} ${pct(pr.home)} · draw ${pct(pr.draw)} · ${B} ${pct(pr.away)}` : `${A} ${pct(pr.home)} · ${B} ${pct(pr.away)}`;
+}
+
+/** Where the percentages come from: P = Pinnacle, C = consensus, B = one bookmaker, M = stats model only. */
+const sourceTag = (p: Prediction) => (!p.fair ? "M" : p.fair.kind === "sharp" ? "P" : p.fair.kind === "consensus" ? "C" : "B");
+
+/**
+ * One compact message for everything starting soon. Returns one or more
+ * message texts (split to stay under Telegram's length limit).
+ */
+export function formatDigest(preds: Prediction[]): string[] {
+  if (!preds.length) return [];
+  const sorted = [...preds].sort((a, b) => +a.match.start - +b.match.start);
+  const first = sorted[0].match.start, last = sorted[sorted.length - 1].match.start;
+  const header = `⏱ <b>Starting soon</b> · ${preds.length} match${preds.length > 1 ? "es" : ""} · ${hhmm(first)}–${hhmm(last)} UTC`;
+
+  const blocks: string[] = [];
+  const byLeague = new Map<string, Prediction[]>();
+  for (const p of sorted) {
+    const k = `${p.match.sport}|${p.match.league.split(" – ")[0]}`;
+    byLeague.set(k, [...(byLeague.get(k) ?? []), p]);
+  }
+  for (const [k, ps] of byLeague) {
+    const [sport, league] = k.split("|");
+    const lines = [`${ICON[sport] ?? "🏟"} <b>${esc(league)}</b>`];
+    for (const p of ps) {
+      const gem = p.value ? " 💎" : "";
+      lines.push(`${hhmm(p.match.start)} ${probLine(p, p.final)} <i>${sourceTag(p)}</i>${gem}`);
+    }
+    blocks.push(lines.join("\n"));
+  }
+  const footer = "<i>P = Pinnacle no-vig · C = bookmaker consensus · B = one bookmaker · M = stats model only. 💎 = value bet (details follow).</i>";
+  return chunk([header, ...blocks, footer]);
+}
+
+/** Detailed message for one value bet. */
+export function formatAlert(p: Prediction, now = new Date()): string {
+  const m = p.match, v = p.value!;
+  const mins = Math.max(0, Math.round((m.start.getTime() - now.getTime()) / 60000));
+  const A = esc(m.home.name), B = esc(m.away.name);
+  const pick = v.side === "home" ? A : v.side === "away" ? B : "Draw";
+
+  const L: string[] = [];
+  L.push(`💎 <b>Value bet: ${pick} @ ${v.price.toFixed(2)}</b> on ${esc(v.book)}`);
+  L.push(`${ICON[m.sport] ?? "🏟"} ${A} vs ${B}`);
+  L.push(`🏆 ${esc(m.league)}${m.bestOf ? ` · Bo${m.bestOf}` : ""}`);
+  L.push(`🕒 ${hhmm(m.start)} UTC (in ${Math.floor(mins / 60)}h ${mins % 60}m)`);
+  L.push("");
+  L.push(`📊 Fair chances (${esc(p.fair!.source)}): ${probLine(p, p.final)}`);
+  L.push(`   Stats model: ${probLine(p, p.model)}`);
+  L.push(`➜ Fair price ${v.fairPrice.toFixed(2)}, offered ${v.price.toFixed(2)}: expected value <b>+${v.evPct.toFixed(1)}%</b>`);
+  if (p.best) {
+    const b = p.best;
+    const parts = [
+      b.home && `${A} ${b.home.price.toFixed(2)} (${esc(b.home.book)})`,
+      m.hasDraw && b.draw && `Draw ${b.draw.price.toFixed(2)} (${esc(b.draw.book)})`,
+      b.away && `${B} ${b.away.price.toFixed(2)} (${esc(b.away.book)})`,
+    ].filter(Boolean);
+    L.push(`💰 Best odds: ${parts.join(" | ")}`);
+  }
+  if (p.factors.length) {
+    L.push("");
+    L.push(`🔍 <b>Key factors${p.aiUsed ? " (AI)" : ""}:</b>`);
+    for (const f of p.factors.slice(0, 6)) L.push(` • ${esc(f)}`);
+  }
+  if (p.risks.length) {
+    L.push("");
+    L.push(`⚠️ <b>Check before betting:</b>`);
+    for (const r of p.risks.slice(0, 3)) L.push(` • ${esc(r)}`);
+  }
+  L.push("");
+  L.push(`Confidence: ${p.confidence} · prices move, so check the current odds${m.link ? ` · <a href="${esc(m.link)}">match page</a>` : ""}`);
+  return L.join("\n");
+}
+
+/** Join blocks with blank lines into messages under the length limit. */
+export function chunk(blocks: string[]): string[] {
+  const out: string[] = [];
+  let cur = "";
+  for (const b of blocks) {
+    const piece = b.length > MAX_LEN ? b.slice(0, MAX_LEN) : b;
+    if (cur && cur.length + 2 + piece.length > MAX_LEN) {
+      out.push(cur);
+      cur = piece;
+    } else {
+      cur = cur ? `${cur}\n\n${piece}` : piece;
+    }
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+export async function sendTelegram(html: string): Promise<boolean> {
+  if (config.dryRun || !config.telegramToken || !config.telegramChatId) {
+    console.log("\n----- (dry run: message not sent) -----\n" + html.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+    return true;
+  }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch(`https://api.telegram.org/bot${config.telegramToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: config.telegramChatId, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true } }),
+    }).catch((e) => ({ ok: false, status: 0, text: async () => String(e), json: async () => ({}) }) as unknown as Response);
+    if (res.ok) return true;
+    if (res.status === 429) {
+      // Telegram says how long to wait.
+      const body: any = await res.json().catch(() => ({}));
+      await new Promise((r) => setTimeout(r, 1000 * (body?.parameters?.retry_after ?? 3)));
+      continue;
+    }
+    console.error(`[telegram] send failed: ${await res.text()}`);
+    return false;
+  }
+  return false;
+}

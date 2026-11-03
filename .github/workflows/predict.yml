@@ -1,0 +1,75 @@
+name: Match predictions
+
+on:
+  schedule:
+    - cron: "5,35 * * * *"  # every 30 minutes (UTC). GitHub may start it a few minutes late.
+    - cron: "23 6 * * *"    # daily accuracy report
+  workflow_dispatch: {}     # adds a "Run workflow" button for manual runs
+
+permissions:
+  contents: write           # lets the job save data/ to the bot-data branch
+
+concurrency:
+  group: predictor
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # State (sent matches, prediction log, odds budget) lives on its own
+      # branch so the main branch history stays clean.
+      - name: Load saved state
+        run: |
+          git config user.name "predictor-bot"
+          git config user.email "predictor-bot@users.noreply.github.com"
+          if git fetch --depth=1 origin bot-data:refs/remotes/origin/bot-data 2>/dev/null; then
+            git worktree add -B bot-data data origin/bot-data
+          else
+            echo "No bot-data branch yet; starting fresh."
+            git worktree add --orphan -b bot-data data
+          fi
+
+      - name: Predict and send to Telegram
+        if: github.event.schedule != '23 6 * * *'
+        run: npm start
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          PANDASCORE_TOKEN: ${{ secrets.PANDASCORE_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          SPORTS: ${{ vars.SPORTS }}
+          LEAD_MIN_MINUTES: ${{ vars.LEAD_MIN_MINUTES }}
+          LEAD_MAX_MINUTES: ${{ vars.LEAD_MAX_MINUTES }}
+          MIN_EDGE_PCT: ${{ vars.MIN_EDGE_PCT }}
+          DIGEST: ${{ vars.DIGEST }}
+          ODDS_REGIONS: ${{ vars.ODDS_REGIONS }}
+
+      - name: Accuracy report
+        if: github.event.schedule == '23 6 * * *' || github.event_name == 'workflow_dispatch'
+        run: npm run results
+        env:
+          SEND_REPORT: "1"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PANDASCORE_TOKEN: ${{ secrets.PANDASCORE_TOKEN }}
+
+      - name: Save state
+        if: always()
+        working-directory: data
+        run: |
+          [ -e .git ] || exit 0
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -q -m "state $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q origin bot-data

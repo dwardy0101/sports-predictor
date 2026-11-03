@@ -1,0 +1,4 @@
+node_modules
+.env
+# Runtime state. On GitHub it lives on the bot-data branch (see the workflow).
+data/
