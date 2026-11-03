@@ -60,13 +60,14 @@ Confidence: high · prices move, so check the current odds · match page
 | Scheduler | GitHub Actions | Free on a **public** repo. A private repo gets 2,000 min/month; running every 2 hours needs about 600–750. |
 | Basketball, football, tennis schedules, injuries, rankings | ESPN public JSON | Free, no key |
 | Odds from many bookmakers | [The Odds API](https://the-odds-api.com) | Free tier: 500 credits/month |
+| Tennis and esports odds | [OddsPapi](https://oddspapi.io) | Free tier: 250 requests/month |
 | Dota 2 / CS2 | [PandaScore](https://pandascore.co) | Free plan |
 | Messages | Telegram bot | Free |
 | AI notes on value bets (optional) | Claude API | Pay per use; well under a cent per alert on the default `claude-haiku-5-5` |
 
 **The free odds quota is about 16 calls a day.** The bot spreads it over the month automatically: one call per sport only when that sport has new matches about to start. When the daily allowance is used up, the digest still goes out, just without odds. Busy days (e.g. Saturday football) may run out by evening. Fewer sports means more odds per sport. The Odds API's paid plan (about $30/month for 20,000 credits) removes the limit.
 
-Esports have no odds source on the free plan, so Dota 2 / CS2 lines are stats-only (Elo computed from recent results).
+**OddsPapi fills the gaps** (tennis tour events and Dota 2 / CS2, which The Odds API doesn't price). It only runs when a tennis or esports match in that run still has no odds. One bulk call per bookmaker covers up to 5 tournaments, and the bot asks for Pinnacle plus your bookmaker (`BOOKMAKERS`, default 1xBet), so a run costs about 2 requests, plus a few more once a week to refresh its tournament and name lists. The same daily budgeting applies (about 7 requests a day). Esports matches the bot can't price still show up with the Elo estimate, marked M.
 
 ## Setup (about 20 minutes, no server needed)
 
@@ -93,6 +94,7 @@ In the repo: **Settings → Secrets and variables → Actions**.
 | `TELEGRAM_CHAT_ID` | from step 1 |
 | `ODDS_API_KEY` | from The Odds API |
 | `PANDASCORE_TOKEN` | optional (esports) |
+| `ODDSPAPI_KEY` | optional (tennis and esports odds) |
 | `ANTHROPIC_API_KEY` | optional (AI notes) |
 
 **Variables** tab (all optional):
@@ -132,6 +134,7 @@ src/
   odds/budget.ts       spreads the free odds quota over the month
   sources/espn.ts      schedules, tennis rankings, injuries/news/H2H
   sources/esports.ts   Dota 2 / CS2 from PandaScore + Elo ratings
+  sources/oddspapi.ts  tennis + esports odds (Pinnacle, 1xBet) from OddsPapi, request-budgeted
   sources/oddsapi.ts   odds from many bookmakers
   model/probability.ts fallback stats models
   agent/analyst.ts     optional Claude notes on value bets

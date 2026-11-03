@@ -37,6 +37,12 @@ export const config = {
   oddsMonthlyCredits: num(env.ODDS_MONTHLY_CREDITS, 500),
   /** Never spend the last few credits. */
   oddsReserve: 20,
+  /** OddsPapi (free: 250 requests/month). Adds odds for tennis and esports where The Odds API has none. */
+  oddspapiKey: env.ODDSPAPI_KEY ?? "",
+  oddspapiMonthly: num(env.ODDSPAPI_MONTHLY, 250),
+  oddspapiReserve: 10,
+  /** OddsPapi rejects calls that come too fast (HTTP 429), so leave a gap between them. */
+  oddspapiGapMs: num(env.ODDSPAPI_GAP_MS, 3500),
   /** PandaScore pages of 100 past matches used to compute esports Elo. */
   esportsHistoryPages: 5,
 };

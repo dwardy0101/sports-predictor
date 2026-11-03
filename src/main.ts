@@ -13,6 +13,7 @@ import { config } from "./config.ts";
 import { fetchEspnContext, fetchEspnMatches } from "./sources/espn.ts";
 import { fetchEsportsMatches } from "./sources/esports.ts";
 import { attachOdds } from "./sources/oddsapi.ts";
+import { attachPapiOdds } from "./sources/oddspapi.ts";
 import { OddsBudget } from "./odds/budget.ts";
 import { analyze } from "./agent/analyst.ts";
 import { formatAlert, formatDigest, sendTelegram } from "./notify/telegram.ts";
@@ -35,6 +36,8 @@ async function main() {
   const budget = OddsBudget.load(now);
   await attachOdds(fresh, budget);
   if (config.oddsApiKey) budget.save(); // even in a dry run: those credits were really spent
+
+  await attachPapiOdds(fresh, now); // tennis + esports odds The Odds API doesn't have
 
   const preds = fresh.map(predict);
   const shown = preds.filter((p) => config.includeUnrated || p.fair || p.modelDataPoints > 0);
