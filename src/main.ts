@@ -34,12 +34,20 @@ async function main() {
   if (!fresh.length) return;
 
   const budget = OddsBudget.load(now);
-  await attachOdds(fresh, budget);
+  const skipped = await attachOdds(fresh, budget);
   if (config.oddsApiKey) budget.save(); // even in a dry run: those credits were really spent
 
-  await attachPapiOdds(fresh, now); // tennis + esports odds The Odds API doesn't have
+  const skippedPapi = await attachPapiOdds(fresh, now); // tennis + esports odds The Odds API doesn't have
 
-  const preds = fresh.map(predict);
+  // Matches left unpriced only because the budget ran out are held back for the next run, if that
+  // run can still see them (it starts runIntervalMinutes later and needs leadMinMinutes to spare).
+  const canWait = (m: Match) => m.start.getTime() - now.getTime() > (config.runIntervalMinutes + config.leadMinMinutes) * 60_000;
+  const held = new Set([...skipped, ...skippedPapi].filter((m) => !m.odds?.books.length && canWait(m)));
+  if (held.size) console.log(`[run] holding ${held.size} match(es) until the next run (odds budget used up)`);
+  const ready = fresh.filter((m) => !held.has(m));
+  if (!ready.length) return;
+
+  const preds = ready.map(predict);
   const shown = preds.filter((p) => config.includeUnrated || p.fair || p.modelDataPoints > 0);
   const values = shown.filter((p) => p.value);
   console.log(`[run] ${shown.length} to show (${preds.length - shown.length} with no data skipped), ${values.length} value bet(s)`);

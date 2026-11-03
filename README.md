@@ -69,6 +69,13 @@ Confidence: high · prices move, so check the current odds · match page
 
 **OddsPapi fills the gaps** (tennis tour events and Dota 2 / CS2, which The Odds API doesn't price). It only runs when a tennis or esports match in that run still has no odds. One bulk call per bookmaker covers up to 5 tournaments, and the bot asks for Pinnacle plus your bookmaker (`BOOKMAKERS`, default 1xBet), so a run costs about 2 requests, plus a few more once a week to refresh its tournament and name lists. The same daily budgeting applies (about 7 requests a day). Esports matches the bot can't price still show up with the Elo estimate, marked M.
 
+**How the credits are shared out**
+- Each service gets a daily share of what's left in the month (about 16 credits a day for The Odds API, 7 requests a day for OddsPapi).
+- A quarter of the day's share may be spent before 06:00 UTC, 45% before 12:00, 75% before 18:00, so the afternoon and evening matches always have credits.
+- The most important leagues are priced first (Champions League, Premier League, NBA, La Liga, Serie A, Bundesliga, Ligue 1, Europa League), then everything else.
+- If a match can't be priced only because the share is used up, and another run can still see it, the bot holds it back and tries again next run instead of sending it without odds. Set `RUN_INTERVAL_MINUTES` if your timer isn't every 2 hours.
+- Runs from your own computer spend the same free credits, so use `npm run dry` sparingly.
+
 ## Setup (about 20 minutes, no server needed)
 
 ### 1. Create your Telegram bot

@@ -137,7 +137,7 @@ test("odds budget spreads the free quota over the month", () => {
   const dir = mkdtempSync(join(tmpdir(), "budget-"));
   const file = join(dir, "b.json");
   // 1 Nov, fresh month: (500 - 20 reserve) / 30 days = 16 per day.
-  const b = OddsBudget.load(new Date("2026-11-01T10:00:00Z"), file);
+  const b = OddsBudget.load(new Date("2026-11-01T20:00:00Z"), file);
   assert.equal(b.dailyAllowance(), 16);
   for (let i = 0; i < 16; i++) { assert.ok(b.canSpend()); b.record(String(499 - i), "1"); }
   assert.equal(b.canSpend(), false);
@@ -149,6 +149,20 @@ test("odds budget spreads the free quota over the month", () => {
   // Near the reserve, nothing more is spent.
   writeFileSync(file, JSON.stringify({ month: "2026-11", day: "2026-11-30", usedToday: 0, remaining: 20 }));
   assert.equal(OddsBudget.load(new Date("2026-11-30T10:00:00Z"), file).canSpend(), false);
+});
+
+test("pacing holds back credits for the busy evening", () => {
+  const file = join(mkdtempSync(join(tmpdir(), "pace-")), "b.json");
+  // 16 credits a day: at 02:00 UTC only a quarter (4) may be spent, at 20:00 all of it.
+  const early = OddsBudget.load(new Date("2026-11-01T02:00:00Z"), file);
+  assert.equal(early.dailyAllowance(), 16);
+  let n = 0;
+  while (early.canSpend()) { early.record(String(499 - n), "1"); n++; }
+  assert.equal(n, 4);
+  const noPace = OddsBudget.load(new Date("2026-11-01T02:00:00Z"), join(mkdtempSync(join(tmpdir(), "pace-")), "b.json"), { monthly: 500, reserve: 20, pace: false });
+  let m = 0;
+  while (noPace.canSpend()) { noPace.record(String(499 - m), "1"); m++; }
+  assert.equal(m, 16);
 });
 
 test("parsers and name matching", () => {

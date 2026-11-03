@@ -131,10 +131,12 @@ export function oddspapiBooks(): string[] {
   return [...new Set(["pinnacle", ...(config.bookmakers.length ? config.bookmakers : ["1xbet"])])].slice(0, 2);
 }
 
-export async function attachPapiOdds(matches: Match[], now = new Date()): Promise<void> {
-  if (!config.oddspapiKey) return;
+/** Returns the matches still unpriced only because the budget ran out (so they can be retried). */
+export async function attachPapiOdds(matches: Match[], now = new Date()): Promise<Match[]> {
+  if (!config.oddspapiKey) return [];
   const needy = matches.filter((m) => SPORT_ID[m.sport] && !m.odds?.books.length);
-  if (!needy.length) return;
+  if (!needy.length) return [];
+  let blocked = false;
 
   const budget = OddsBudget.load(now, BUDGET, { monthly: config.oddspapiMonthly, reserve: config.oddspapiReserve });
   try {
@@ -146,7 +148,7 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
     const cache = loadCache();
     const sids = [...new Set(needy.map((m) => SPORT_ID[m.sport]!))];
     const spend = async (path: string, params: Record<string, string | number> = {}) => {
-      if (!budget.canSpend(1)) return null;
+      if (!budget.canSpend(1)) { blocked = true; return null; }
       const out = await papiGet(path, params);
       budget.record(undefined, "1");
       await sleep(config.oddspapiGapMs);
@@ -163,10 +165,13 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
     const lists: Record<number, Tournament[]> = {};
     for (const sid of sids) if (cache.tournaments[sid]) lists[sid] = cache.tournaments[sid].list;
     const ids = pickTournaments(lists, needy);
-    if (!ids.length) { console.log(`[oddspapi] no active tournament matches ${needy.length} unpriced match(es)`); return; }
+    if (!ids.length) {
+      console.log(`[oddspapi] no active tournament matches ${needy.length} unpriced match(es)${blocked ? " (budget blocked a list refresh)" : ""}`);
+      return blocked ? needy : [];
+    }
 
     // One bulk call per bookmaker covers every upcoming match of those tournaments.
-    if (!budget.canSpend(oddspapiBooks().length)) { console.warn(`[oddspapi] daily budget reached (${budget.summary()})`); return; }
+    if (!budget.canSpend(oddspapiBooks().length)) { console.warn(`[oddspapi] budget limit reached (${budget.summary()})`); return needy; }
     const byBook: Record<string, any[]> = {};
     for (const b of oddspapiBooks()) {
       const res = await spend("/odds-by-tournaments", { bookmaker: b, tournamentIds: ids.join(",") });
@@ -202,6 +207,7 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
       if (books.length) { m.odds = { books, source: "OddsPapi" }; matched++; }
     }
     console.log(`[oddspapi] priced ${matched} of ${needy.length} match(es) from ${ids.length} tournament(s); ${budget.summary()}`);
+    return blocked ? needy.filter((m) => !m.odds?.books.length) : [];
   } finally {
     budget.save(BUDGET);
   }

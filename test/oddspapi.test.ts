@@ -96,7 +96,8 @@ test("end to end: fake OddsPapi prices a tennis match, and a value bet appears",
   try {
     const m = base({});
     const unrelated = base({ key: "k2", sport: "nba", league: "NBA" }); // not an OddsPapi sport: untouched
-    await attachPapiOdds([m, unrelated]);
+    const NOW = new Date("2026-11-03T20:00:00Z");
+    await attachPapiOdds([m, unrelated], NOW);
     assert.equal(m.odds?.source, "OddsPapi");
     assert.deepEqual(m.odds!.books.map((b) => [b.key, b.home, b.away]), [["pinnacle", 1.62, 2.38], ["1xbet", 1.55, 2.6]]);
     assert.equal(unrelated.odds, undefined);
@@ -113,14 +114,33 @@ test("end to end: fake OddsPapi prices a tennis match, and a value bet appears",
     // A second run the same day reuses the cached lists: only the 2 odds calls remain.
     calls.length = 0;
     const m2 = base({ key: "k3" });
-    await attachPapiOdds([m2]);
+    await attachPapiOdds([m2], NOW);
     assert.equal(calls.filter((c) => !c.includes("/account")).length, 2);
     assert.equal(m2.odds?.books.length, 2);
 
     // Matches that already have odds cost nothing.
     calls.length = 0;
-    await attachPapiOdds([m]);
+    await attachPapiOdds([m], NOW);
     assert.equal(calls.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("when the request quota is nearly used up, OddsPapi spends nothing and reports the matches as held", async () => {
+  const calls: string[] = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: any) => {
+    const u = new URL(String(input));
+    calls.push(u.pathname);
+    return new Response(JSON.stringify({ subscriptions: [{ is_active: true, request_limit: 250, request_count: 245 }] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const m = base({ key: "k9", home: { name: "Someone New" }, away: { name: "Another One" } });
+    const held = await attachPapiOdds([m], new Date("2026-11-04T20:00:00Z"));
+    assert.deepEqual(held, [m]);
+    assert.equal(m.odds, undefined);
+    assert.deepEqual(calls, ["/v4/account"]); // only the free balance check
   } finally {
     globalThis.fetch = realFetch;
   }

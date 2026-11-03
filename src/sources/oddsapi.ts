@@ -6,15 +6,17 @@
  *  - OddsBudget caps how much each day may spend.
  * Listing the sports (/sports) is free.
  */
-import { config, ESPN_LEAGUES } from "../config.ts";
+import { config, ESPN_LEAGUES, ODDS_PRIORITY } from "../config.ts";
 import { getJson, getJsonRes, isoSec } from "../http.ts";
 import type { OddsBudget } from "../odds/budget.ts";
 import type { BookPrice, Match } from "../types.ts";
 
 const BASE = "https://api.the-odds-api.com/v4";
 
-export async function attachOdds(matches: Match[], budget: OddsBudget): Promise<void> {
-  if (!config.oddsApiKey || !matches.length) return;
+/** Returns the matches left without odds only because the budget ran out (so they can be retried). */
+export async function attachOdds(matches: Match[], budget: OddsBudget): Promise<Match[]> {
+  const deferred: Match[] = [];
+  if (!config.oddsApiKey || !matches.length) return deferred;
 
   const byKey = new Map<string, Match[]>();
   const add = (k: string, m: Match) => byKey.set(k, [...(byKey.get(k) ?? []), m]);
@@ -35,11 +37,14 @@ export async function attachOdds(matches: Match[], budget: OddsBudget): Promise<
     }
   }
 
-  // Busiest sports first, in case the budget runs out part-way.
-  const queue = [...byKey].sort((a, b) => b[1].length - a[1].length);
-  for (const [sportKey, ms] of queue) {
+  // Most important leagues first, in case the budget runs out part-way.
+  const rank = (k: string) => { const i = ODDS_PRIORITY.indexOf(k); return i < 0 ? ODDS_PRIORITY.length : i; };
+  const queue = [...byKey].sort((a, b) => rank(a[0]) - rank(b[0]) || b[1].length - a[1].length);
+  for (let i = 0; i < queue.length; i++) {
+    const [sportKey, ms] = queue[i];
     if (!budget.canSpend()) {
-      console.warn(`[odds] daily budget reached (${budget.summary()}); skipping ${queue.length} sport(s) left`);
+      console.warn(`[odds] budget limit reached (${budget.summary()}); ${queue.length - i} sport(s) left unpriced`);
+      for (const [, rest] of queue.slice(i)) deferred.push(...rest);
       break;
     }
     const from = new Date(Math.min(...ms.map((m) => +m.start)) - 3600_000);
@@ -56,6 +61,7 @@ export async function attachOdds(matches: Match[], budget: OddsBudget): Promise<
     }
   }
   console.log(`[odds] ${budget.summary()}`);
+  return deferred;
 }
 
 const TOURNEY_NOISE = new Set(["open", "tennis", "ladies", "mens", "womens", "championships", "championship", "cup", "masters", "international", "presented", "rolex", "atp", "wta", "the"]);

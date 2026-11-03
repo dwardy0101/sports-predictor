@@ -14,6 +14,8 @@ export const config = {
   /** Matches are picked up when kickoff is between these many minutes away. With runs every 2h, keep the gap > 120. */
   leadMinMinutes: num(env.LEAD_MIN_MINUTES, 15),
   leadMaxMinutes: num(env.LEAD_MAX_MINUTES, 150),
+  /** How often the outside timer starts a run. A match with odds still missing is retried only if another run can still see it. */
+  runIntervalMinutes: num(env.RUN_INTERVAL_MINUTES, 120),
   /** Minimum expected value (%) for a value-bet alert. */
   minEdgePct: num(env.MIN_EDGE_PCT, 3),
   /** Also list matches we know nothing about (no odds, no stats). Off by default: they'd all be 50/50. */
@@ -46,6 +48,15 @@ export const config = {
   /** PandaScore pages of 100 past matches used to compute esports Elo. */
   esportsHistoryPages: 5,
 };
+
+/**
+ * The Odds API sports to spend credits on first, best first. Anything not listed
+ * (e.g. tennis tournaments) comes after, busiest first.
+ */
+export const ODDS_PRIORITY = [
+  "soccer_uefa_champs_league", "soccer_epl", "basketball_nba", "soccer_spain_la_liga", "soccer_italy_serie_a",
+  "soccer_germany_bundesliga", "soccer_france_ligue_one", "soccer_uefa_europa_league", "basketball_wnba", "basketball_ncaab",
+];
 
 /** ESPN public JSON endpoints (no key). sport/league path pairs, plus The Odds API sport key. */
 export interface LeagueDef { sport: string; league: string; name: string; group: SportGroup; oddsKey?: string }

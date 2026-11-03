@@ -11,7 +11,12 @@ import { DATA_DIR } from "../state.ts";
 const FILE = `${DATA_DIR}/odds-budget.json`;
 
 interface Saved { month: string; day: string; usedToday: number; remaining: number }
-export interface BudgetOpts { monthly: number; reserve: number }
+export interface BudgetOpts {
+  monthly: number;
+  reserve: number;
+  /** Hold back part of each day's share for later (default on). Set false to allow all of it at any hour. */
+  pace?: boolean;
+}
 
 export class OddsBudget {
   private constructor(private s: Saved, private now: Date, private opts: BudgetOpts) {}
@@ -47,8 +52,19 @@ export class OddsBudget {
     return Math.floor(Math.max(0, this.s.remaining + this.s.usedToday - this.opts.reserve) / daysLeft);
   }
 
+  /**
+   * Share of today's allowance that may be spent by now (UTC). Early runs can't eat the whole
+   * day's credits, so the busy afternoon and evening (European football, NBA) still get theirs.
+   */
+  paceShare(): number {
+    if (this.opts.pace === false) return 1;
+    const h = this.now.getUTCHours();
+    return h < 6 ? 0.25 : h < 12 ? 0.45 : h < 18 ? 0.75 : 1;
+  }
+
   canSpend(cost = 1): boolean {
-    return this.s.remaining - cost >= this.opts.reserve && this.s.usedToday + cost <= this.dailyAllowance();
+    const limit = Math.ceil(this.dailyAllowance() * this.paceShare());
+    return this.s.remaining - cost >= this.opts.reserve && this.s.usedToday + cost <= limit;
   }
 
   /** Record one call. `remainingHeader` / `lastCostHeader` come from the service (e.g. x-requests-remaining / x-requests-last). */
