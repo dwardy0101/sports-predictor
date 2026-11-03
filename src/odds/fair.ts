@@ -18,13 +18,32 @@ function validBook(b: BookPrice, hasDraw: boolean): boolean {
   return ok(b.home) && ok(b.away) && (!hasDraw || ok(b.draw));
 }
 
-/** Remove one bookmaker's margin: 1/odds, then scale so the outcomes add to 100%. */
+/**
+ * Remove one bookmaker's margin with the "power" method: find k so that
+ * (1/odds)^k adds up to 100%. Unlike simply scaling, this takes more of the
+ * margin off long shots, where bookmakers put most of it (the favourite–
+ * longshot bias), so underdogs don't look like false value.
+ */
 export function devigBook(b: BookPrice, hasDraw: boolean): Probabilities | undefined {
   if (!validBook(b, hasDraw)) return undefined;
-  const h = 1 / b.home, a = 1 / b.away, d = hasDraw ? 1 / b.draw! : 0;
-  const s = h + a + d;
-  return { home: h / s, away: a / s, draw: d / s };
+  const q = [1 / b.home, 1 / b.away, hasDraw ? 1 / b.draw! : 0];
+  const total = (k: number) => q.reduce((s, x) => s + (x > 0 ? x ** k : 0), 0);
+  let k = 1;
+  if (total(1) > 1) {
+    let lo = 1, hi = 10;
+    for (let i = 0; i < 60; i++) {
+      k = (lo + hi) / 2;
+      if (total(k) > 1) lo = k; else hi = k;
+    }
+  }
+  const p = q.map((x) => (x > 0 ? x ** k : 0));
+  const s = p[0] + p[1] + p[2];
+  return { home: p[0] / s, away: p[1] / s, draw: p[2] / s };
 }
+
+/** Optional allow-list of bookmakers the user can actually bet with (BOOKMAKERS setting). */
+const usable = (b: BookPrice, allow: string[]) =>
+  !allow.length || allow.some((a) => b.key.toLowerCase() === a || b.title.toLowerCase().includes(a));
 
 const median = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -48,11 +67,11 @@ export function fairProbs(odds: MarketOdds | undefined, hasDraw: boolean): Fair 
   return { probs: each[0], source: books[0].title, kind: "single" };
 }
 
-/** Highest price per outcome across bookmakers (exchanges excluded). */
-export function bestPrices(odds: MarketOdds | undefined, hasDraw: boolean): BestPrices | undefined {
+/** Highest price per outcome across bookmakers (exchanges excluded; only `allow` books if given). */
+export function bestPrices(odds: MarketOdds | undefined, hasDraw: boolean, allow: string[] = []): BestPrices | undefined {
   const out: BestPrices = {};
   for (const b of odds?.books ?? []) {
-    if (EXCHANGE.test(b.key)) continue;
+    if (EXCHANGE.test(b.key) || !usable(b, allow)) continue;
     for (const side of (hasDraw ? ["home", "away", "draw"] : ["home", "away"]) as Side[]) {
       const p = b[side];
       if (typeof p === "number" && p > 1 && (!out[side] || p > out[side]!.price)) out[side] = { price: p, book: b.title };

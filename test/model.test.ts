@@ -30,6 +30,24 @@ test("devig removes bookmaker margin", () => {
   assert.ok(Math.abs(sum(f) - 1) < 1e-9);
 });
 
+test("power devig takes more margin off the long shot", () => {
+  const b = { key: "x", title: "X", home: 1.3, draw: 6.0, away: 10.0 };
+  const p = devigBook(b, true)!;
+  assert.ok(Math.abs(sum(p) - 1) < 1e-9);
+  const q = [1 / 1.3, 1 / 6, 1 / 10], s = q[0] + q[1] + q[2];
+  assert.ok(p.away < q[2] / s, "underdog lower than simple scaling");
+  assert.ok(p.home > q[0] / s, "favourite higher than simple scaling");
+});
+
+test("bookmaker allow-list limits the best prices", () => {
+  const o = odds(["pinnacle", 2.0, 1.9], ["unibet_se", 2.3, 1.7], ["onexbet", 2.15, 1.75]);
+  o.books[1].title = "Unibet (SE)";
+  o.books[2].title = "1xBet";
+  assert.equal(bestPrices(o, false)!.home!.book, "Unibet (SE)");
+  assert.equal(bestPrices(o, false, ["1xbet"])!.home!.book, "1xBet");
+  assert.equal(bestPrices(o, false, ["bet365"]), undefined);
+});
+
 test("fair odds: Pinnacle first, then consensus, then single book", () => {
   const withPin = fairProbs(odds(["unibet", 2.2, 1.7], ["pinnacle", 2.0, 1.85], ["bet365", 2.1, 1.75]), false)!;
   assert.equal(withPin.kind, "sharp");

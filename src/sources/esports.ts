@@ -45,6 +45,8 @@ export async function fetchEsportsMatches(groups: SportGroup[], from: Date, to: 
       if (opp.length !== 2) continue;
       const start = new Date(pm.begin_at ?? pm.scheduled_at);
       if (isNaN(start.getTime()) || start < from || start > to) continue;
+      const tier = String(pm.tournament?.tier ?? "unranked").toLowerCase();
+      if (!config.esportsTiers.includes(tier)) continue;
       const [A, B] = opp.map((o: any) => o.opponent);
 
       const side = (t: any): TeamSide => {

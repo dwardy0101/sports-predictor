@@ -4,7 +4,7 @@ Every 30 minutes this bot:
 
 1. Finds matches starting in about **15–100 minutes**: NBA, WNBA, top football (soccer) leagues, ATP/WTA tennis, Dota 2 and CS2 (college basketball optional).
 2. Gets odds from **many bookmakers, including Pinnacle** (the sharpest one).
-3. Works out the **fair chances** by removing Pinnacle's margin (or using the consensus of several bookmakers). With no odds, it falls back to a simple stats model: tennis world rankings, esports Elo, season records.
+3. Works out the **fair chances** by removing Pinnacle's margin (power method, which corrects the favourite–longshot bias) (or using the consensus of several bookmakers). With no odds, it falls back to a simple stats model: tennis world rankings, esports Elo, season records.
 4. Sends **one Telegram digest** of everything starting soon.
 5. Sends a **separate alert for each value bet**: a bookmaker paying more than the fair price. Alerts include injuries, news and (optionally) AI notes on what could make it a trap.
 6. Logs everything and sends a **daily accuracy report** with the profit or loss of every value bet.
@@ -103,6 +103,8 @@ In the repo: **Settings → Secrets and variables → Actions**.
 | `LEAD_MIN_MINUTES` / `LEAD_MAX_MINUTES` | `15` / `100` | pick up matches starting between these many minutes from now |
 | `MIN_EDGE_PCT` | `3` | value-bet alert threshold (expected value %) |
 | `DIGEST` | `1` | `0` = only send value-bet alerts, no digest |
+| `BOOKMAKERS` | all | bookmakers you can bet with, e.g. `1xbet,bet365`. Value alerts only use their prices |
+| `ESPORTS_TIERS` | `s,a,b` | esports tournament tiers to include (`c`, `d`, `unranked` add many small matches) |
 | `ODDS_REGIONS` | `eu` | bookmaker region(s) at The Odds API; `eu` includes Pinnacle. Each extra region costs 1 more credit per call |
 | `LLM_MODEL` | `claude-haiku-5-5` | AI model for the value-bet notes |
 

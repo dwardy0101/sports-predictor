@@ -7,7 +7,7 @@ import type { Match, Prediction } from "./types.ts";
 export function predict(m: Match): Prediction {
   const { probs: model, dataPoints } = modelProbs(m);
   const fair = fairProbs(m.odds, m.hasDraw);
-  const best = bestPrices(m.odds, m.hasDraw);
+  const best = bestPrices(m.odds, m.hasDraw, config.bookmakers);
   const value = findValue(fair, best, config.minEdgePct);
   const confidence: Prediction["confidence"] = fair?.kind === "sharp" ? "high" : fair ? "medium" : "low";
   return {

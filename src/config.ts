@@ -25,6 +25,13 @@ export const config = {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean) as SportGroup[],
+  /**
+   * Bookmakers you can bet with, e.g. "1xbet,bet365". Value alerts only use their prices.
+   * Matched against The Odds API key or title (case-insensitive). Empty = all.
+   */
+  bookmakers: (env.BOOKMAKERS || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
+  /** PandaScore tournament tiers to include (s = top ... d = lowest, plus "unranked"). */
+  esportsTiers: (env.ESPORTS_TIERS || "s,a,b").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
   /** The Odds API: "eu" includes Pinnacle plus most European bookmakers. */
   oddsRegions: env.ODDS_REGIONS || "eu",
   oddsMonthlyCredits: num(env.ODDS_MONTHLY_CREDITS, 500),
