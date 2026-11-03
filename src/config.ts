@@ -11,9 +11,9 @@ export const config = {
   anthropicKey: env.ANTHROPIC_API_KEY ?? "",
   /** Only used for value-bet alerts. Haiku keeps it to cents per month. */
   llmModel: env.LLM_MODEL || "claude-haiku-5-5",
-  /** Matches are picked up when kickoff is between these many minutes away. */
+  /** Matches are picked up when kickoff is between these many minutes away. With runs every 2h, keep the gap > 120. */
   leadMinMinutes: num(env.LEAD_MIN_MINUTES, 15),
-  leadMaxMinutes: num(env.LEAD_MAX_MINUTES, 100),
+  leadMaxMinutes: num(env.LEAD_MAX_MINUTES, 150),
   /** Minimum expected value (%) for a value-bet alert. */
   minEdgePct: num(env.MIN_EDGE_PCT, 3),
   /** Also list matches we know nothing about (no odds, no stats). Off by default: they'd all be 50/50. */

@@ -1,5 +1,5 @@
 /**
- * The pipeline. Each run (every 30 minutes):
+ * The pipeline. Each run (every 2 hours):
  *  1. Collect matches starting in LEAD_MIN..LEAD_MAX minutes that we haven't sent yet.
  *  2. Attach odds from many bookmakers (The Odds API, within the daily credit budget).
  *  3. Fair chances = Pinnacle with its margin removed (or a consensus of bookmakers).

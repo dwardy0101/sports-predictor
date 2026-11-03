@@ -1,8 +1,8 @@
 # Sports Match Predictor
 
-Every 30 minutes this bot:
+Every 2 hours this bot:
 
-1. Finds matches starting in about **15–100 minutes**: NBA, WNBA, top football (soccer) leagues, ATP/WTA tennis, Dota 2 and CS2 (college basketball optional).
+1. Finds matches starting in about **15–150 minutes**: NBA, WNBA, top football (soccer) leagues, ATP/WTA tennis, Dota 2 and CS2 (college basketball optional).
 2. Gets odds from **many bookmakers, including Pinnacle** (the sharpest one).
 3. Works out the **fair chances** by removing Pinnacle's margin (power method, which corrects the favourite–longshot bias) (or using the consensus of several bookmakers). With no odds, it falls back to a simple stats model: tennis world rankings, esports Elo, season records.
 4. Sends **one Telegram digest** of everything starting soon.
@@ -57,7 +57,7 @@ Confidence: high · prices move, so check the current odds · match page
 
 | Piece | Service | Cost |
 |---|---|---|
-| Scheduler | GitHub Actions | Free on a **public** repo. A private repo gets 2,000 min/month, and running every 30 min needs about 2,200–2,900. |
+| Scheduler | GitHub Actions | Free on a **public** repo. A private repo gets 2,000 min/month; running every 2 hours needs about 600–750. |
 | Basketball, football, tennis schedules, injuries, rankings | ESPN public JSON | Free, no key |
 | Odds from many bookmakers | [The Odds API](https://the-odds-api.com) | Free tier: 500 credits/month |
 | Dota 2 / CS2 | [PandaScore](https://pandascore.co) | Free plan |
@@ -100,7 +100,7 @@ In the repo: **Settings → Secrets and variables → Actions**.
 | Name | Default | Meaning |
 |---|---|---|
 | `SPORTS` | `nba,wnba,football,tennis,dota2,cs2` | which sports to cover (`basketball` = NCAA men; many games, uses lots of odds credits) |
-| `LEAD_MIN_MINUTES` / `LEAD_MAX_MINUTES` | `15` / `100` | pick up matches starting between these many minutes from now |
+| `LEAD_MIN_MINUTES` / `LEAD_MAX_MINUTES` | `15` / `150` | pick up matches starting between these many minutes from now (keep the gap over 120, the run interval) |
 | `MIN_EDGE_PCT` | `3` | value-bet alert threshold (expected value %) |
 | `DIGEST` | `1` | `0` = only send value-bet alerts, no digest |
 | `BOOKMAKERS` | all | bookmakers you can bet with, e.g. `1xbet,bet365`. Value alerts only use their prices |
@@ -109,7 +109,7 @@ In the repo: **Settings → Secrets and variables → Actions**.
 | `LLM_MODEL` | `claude-haiku-5-5` | AI model for the value-bet notes |
 
 ### 5. Turn it on
-Go to the **Actions** tab, enable workflows, open **Match predictions**, and click **Run workflow** to test. After that it runs every 30 minutes by itself. The first run creates the `bot-data` branch where it keeps its memory.
+Go to the **Actions** tab, enable workflows, open **Match predictions**, and click **Run workflow** to test. After that it runs every 2 hours by itself. The first run creates the `bot-data` branch where it keeps its memory.
 
 ## Run on your own computer
 
