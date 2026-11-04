@@ -61,6 +61,7 @@ jobs:
           DIGEST: ${{ vars.DIGEST }}
           ODDS_REGIONS: ${{ vars.ODDS_REGIONS }}
           BOOKMAKERS: ${{ vars.BOOKMAKERS }}
+          TIMEZONE: ${{ vars.TIMEZONE }}
           ESPORTS_TIERS: ${{ vars.ESPORTS_TIERS }}
 
       - name: Accuracy report

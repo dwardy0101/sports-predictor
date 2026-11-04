@@ -3,7 +3,16 @@ import type { Prediction, Probabilities } from "../types.ts";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const pct = (p: number) => `${Math.round(p * 100)}%`;
-const hhmm = (d: Date) => d.toISOString().slice(11, 16);
+const tzLabel = () => (config.timezone === "Asia/Manila" ? "PHT" : config.timezone);
+const part = (d: Date, opts: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: config.timezone, ...opts }).format(d).replace(/\u202f/g, " ");
+const dayKey = (d: Date) => part(d, { year: "numeric", month: "numeric", day: "numeric" });
+/** "11:30 PM" in the configured timezone. */
+export const clock = (d: Date) => part(d, { hour: "numeric", minute: "2-digit", hour12: true });
+/** "Tue, Nov 3" in the configured timezone. */
+export const dayLabel = (d: Date) => part(d, { weekday: "short", month: "short", day: "numeric" });
+/** Time of day, with "+1d" when it falls on a later local day than `ref` (e.g. just after midnight). */
+const clockOn = (d: Date, ref: Date) => (dayKey(d) === dayKey(ref) ? clock(d) : `${clock(d)} +1d`);
 const ICON: Record<string, string> = { nba: "🏀", wnba: "🏀", basketball: "🏀", football: "⚽", tennis: "🎾", dota2: "🎮", cs2: "🔫" };
 /** Telegram's limit is 4096 characters; leave room for HTML entities. */
 const MAX_LEN = 3800;
@@ -25,7 +34,7 @@ export function formatDigest(preds: Prediction[]): string[] {
   if (!preds.length) return [];
   const sorted = [...preds].sort((a, b) => +a.match.start - +b.match.start);
   const first = sorted[0].match.start, last = sorted[sorted.length - 1].match.start;
-  const header = `⏱ <b>Starting soon</b> · ${preds.length} match${preds.length > 1 ? "es" : ""} · ${hhmm(first)}–${hhmm(last)} UTC`;
+  const header = `⏱ <b>Starting soon</b> · ${preds.length} match${preds.length > 1 ? "es" : ""} · ${dayLabel(first)} · ${clock(first)}–${clockOn(last, first)} ${tzLabel()}`;
 
   const blocks: string[] = [];
   const byLeague = new Map<string, Prediction[]>();
@@ -38,7 +47,7 @@ export function formatDigest(preds: Prediction[]): string[] {
     const lines = [`${ICON[sport] ?? "🏟"} <b>${esc(league)}</b>`];
     for (const p of ps) {
       const gem = p.value ? " 💎" : "";
-      lines.push(`${hhmm(p.match.start)} ${probLine(p, p.final)} <i>${sourceTag(p)}</i>${gem}`);
+      lines.push(`${clockOn(p.match.start, first)} ${probLine(p, p.final)} <i>${sourceTag(p)}</i>${gem}`);
     }
     blocks.push(lines.join("\n"));
   }
@@ -57,7 +66,7 @@ export function formatAlert(p: Prediction, now = new Date()): string {
   L.push(`💎 <b>Value bet: ${pick} @ ${v.price.toFixed(2)}</b> on ${esc(v.book)}`);
   L.push(`${ICON[m.sport] ?? "🏟"} ${A} vs ${B}`);
   L.push(`🏆 ${esc(m.league)}${m.bestOf ? ` · Bo${m.bestOf}` : ""}`);
-  L.push(`🕒 ${hhmm(m.start)} UTC (in ${Math.floor(mins / 60)}h ${mins % 60}m)`);
+  L.push(`🕒 ${dayLabel(m.start)} · ${clock(m.start)} ${tzLabel()} (in ${Math.floor(mins / 60)}h ${mins % 60}m)`);
   L.push("");
   L.push(`📊 Fair chances (${esc(p.fair!.source)}): ${probLine(p, p.final)}`);
   L.push(`   Stats model: ${probLine(p, p.model)}`);

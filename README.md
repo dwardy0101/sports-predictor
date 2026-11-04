@@ -23,14 +23,14 @@ The stats model is only used when there are no odds, and the digest marks every 
 ## Example messages
 
 ```
-⏱ Starting soon · 3 matches · 19:30–20:00 UTC
+⏱ Starting soon · 3 matches · Tue, Nov 3 · 3:30 AM–4:00 AM PHT
 
 ⚽ Champions League
-20:00 Barcelona 72% · draw 15% · Aston Villa 13% P
-20:00 Manchester United 44% · draw 25% · AS Roma 31% P 💎
+4:00 AM Barcelona 72% · draw 15% · Aston Villa 13% P
+4:00 AM Manchester United 44% · draw 25% · AS Roma 31% P 💎
 
 🎾 Rolex Paris Masters
-19:30 Casper Ruud 41% · Rafael Jodar 59% P
+3:30 AM Casper Ruud 41% · Rafael Jodar 59% P
 
 P = Pinnacle no-vig · C = bookmaker consensus · B = one bookmaker · M = stats model only. 💎 = value bet (details follow).
 ```
@@ -39,7 +39,7 @@ P = Pinnacle no-vig · C = bookmaker consensus · B = one bookmaker · M = stats
 💎 Value bet: Manchester United @ 2.45 on Unibet
 ⚽ Manchester United vs AS Roma
 🏆 Champions League
-🕒 20:00 UTC (in 1h 24m)
+🕒 Tue, Nov 3 · 4:00 AM PHT (in 1h 24m)
 
 📊 Fair chances (Pinnacle): Manchester United 44% · draw 25% · AS Roma 31%
    Stats model: Manchester United 41% · draw 27% · AS Roma 32%
@@ -111,6 +111,7 @@ In the repo: **Settings → Secrets and variables → Actions**.
 | `SPORTS` | `nba,wnba,football,tennis,dota2,cs2` | which sports to cover (`basketball` = NCAA men; many games, uses lots of odds credits) |
 | `LEAD_MIN_MINUTES` / `LEAD_MAX_MINUTES` | `15` / `150` | pick up matches starting between these many minutes from now (keep the gap over 120, the run interval) |
 | `MIN_EDGE_PCT` | `3` | value-bet alert threshold (expected value %) |
+| `TIMEZONE` | `Asia/Manila` | timezone for the times in messages (12-hour clock), any IANA name such as `America/New_York` |
 | `DIGEST` | `1` | `0` = only send value-bet alerts, no digest |
 | `BOOKMAKERS` | all | bookmakers you can bet with, e.g. `1xbet,bet365`. Value alerts only use their prices |
 | `ESPORTS_TIERS` | `s,a,b` | esports tournament tiers to include (`c`, `d`, `unranked` add many small matches) |

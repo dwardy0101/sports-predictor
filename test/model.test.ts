@@ -9,7 +9,7 @@ import { OddsBudget } from "../src/odds/budget.ts";
 import { americanToDecimal, parseRecord } from "../src/sources/espn.ts";
 import { computeElo } from "../src/sources/esports.ts";
 import { sameTournament, similar } from "../src/sources/oddsapi.ts";
-import { chunk, formatAlert, formatDigest } from "../src/notify/telegram.ts";
+import { chunk, clock, dayLabel, formatAlert, formatDigest } from "../src/notify/telegram.ts";
 import { predict } from "../src/predict.ts";
 import type { MarketOdds, Match } from "../src/types.ts";
 
@@ -181,6 +181,23 @@ test("parsers and name matching", () => {
   assert.ok(sameTournament(paris, { key: "tennis_atp_paris_masters", title: "ATP Paris Masters" }));
   assert.ok(!sameTournament(paris, { key: "tennis_wta_paris", title: "WTA Paris" })); // wrong tour
   assert.ok(!sameTournament(paris, { key: "tennis_atp_shanghai_masters", title: "ATP Shanghai Masters" }));
+});
+
+test("times are shown in Manila time on a 12-hour clock", () => {
+  assert.equal(clock(new Date("2026-11-03T15:30:00Z")), "11:30 PM");
+  assert.equal(clock(new Date("2026-11-03T04:05:00Z")), "12:05 PM"); // noon
+  assert.equal(clock(new Date("2026-11-03T16:05:00Z")), "12:05 AM"); // midnight
+  assert.equal(clock(new Date("2026-11-03T00:00:00Z")), "8:00 AM");
+  assert.equal(dayLabel(new Date("2026-11-03T16:05:00Z")), "Wed, Nov 4"); // already the next day in Manila
+  const late = predict(base({ key: "late", start: new Date("2026-11-03T15:30:00Z") })); // 11:30 PM Manila
+  const after = predict(base({ key: "after", start: new Date("2026-11-03T16:30:00Z") })); // 12:30 AM next day
+  const [digest] = formatDigest([after, late]);
+  assert.match(digest, /Tue, Nov 3 · 11:30 PM–12:30 AM \+1d PHT/);
+  assert.match(digest, /11:30 PM A/);
+  assert.match(digest, /12:30 AM \+1d A/);
+  assert.doesNotMatch(digest, /UTC/);
+  const m = base({ start: new Date("2026-11-03T15:30:00Z"), odds: odds(["pinnacle", 2.0, 1.9], ["unibet", 2.25, 1.7]) });
+  assert.match(formatAlert(predict(m), new Date("2026-11-03T14:00:00Z")), /🕒 Tue, Nov 3 · 11:30 PM PHT \(in 1h 30m\)/);
 });
 
 test("digest groups by league and escapes HTML; alert explains the value", () => {

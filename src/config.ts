@@ -1,6 +1,11 @@
 import type { SportGroup } from "./types.ts";
 
 const env = process.env;
+/** An IANA timezone name such as "Asia/Manila". Invalid names fall back to UTC. */
+const zone = (v: string | undefined) => {
+  const tz = v || "Asia/Manila";
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return tz; } catch { return "UTC"; }
+};
 const num = (v: string | undefined, d: number) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : d);
 
 export const config = {
@@ -16,6 +21,8 @@ export const config = {
   leadMaxMinutes: num(env.LEAD_MAX_MINUTES, 150),
   /** How often the outside timer starts a run. A match with odds still missing is retried only if another run can still see it. */
   runIntervalMinutes: num(env.RUN_INTERVAL_MINUTES, 120),
+  /** Timezone for the times shown in Telegram messages (12-hour clock). */
+  timezone: zone(env.TIMEZONE),
   /** Minimum expected value (%) for a value-bet alert. */
   minEdgePct: num(env.MIN_EDGE_PCT, 3),
   /** Also list matches we know nothing about (no odds, no stats). Off by default: they'd all be 50/50. */
