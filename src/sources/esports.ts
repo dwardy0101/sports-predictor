@@ -26,8 +26,10 @@ export async function fetchEsportsMatches(groups: SportGroup[], from: Date, to: 
     const slug = GAME_SLUG[g];
     if (!slug) continue;
     const range = `${from.toISOString()},${to.toISOString()}`;
-    const list = await getJson<any[]>(`${PS}/${slug}/matches/upcoming?range[begin_at]=${range}&sort=begin_at&per_page=50`, { headers });
-    if (!Array.isArray(list) || !list.length) continue;
+    const raw = await getJson<any[]>(`${PS}/${slug}/matches/upcoming?range[begin_at]=${range}&sort=begin_at&per_page=50`, { headers });
+    // Only the tiers we cover; skipping the rest first saves downloading the match history for nothing.
+    const list = Array.isArray(raw) ? raw.filter((pm) => config.esportsTiers.includes(String(pm?.tournament?.tier ?? "unranked").toLowerCase())) : [];
+    if (!list.length) continue;
 
     const history: PastMatch[] = [];
     for (let page = 1; page <= config.esportsHistoryPages; page++) {
@@ -45,8 +47,6 @@ export async function fetchEsportsMatches(groups: SportGroup[], from: Date, to: 
       if (opp.length !== 2) continue;
       const start = new Date(pm.begin_at ?? pm.scheduled_at);
       if (isNaN(start.getTime()) || start < from || start > to) continue;
-      const tier = String(pm.tournament?.tier ?? "unranked").toLowerCase();
-      if (!config.esportsTiers.includes(tier)) continue;
       const [A, B] = opp.map((o: any) => o.opponent);
 
       const side = (t: any): TeamSide => {

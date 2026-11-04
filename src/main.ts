@@ -16,7 +16,8 @@ import { attachOdds } from "./sources/oddsapi.ts";
 import { attachPapiOdds } from "./sources/oddspapi.ts";
 import { OddsBudget } from "./odds/budget.ts";
 import { analyze } from "./agent/analyst.ts";
-import { formatAlert, formatDigest, sendTelegram } from "./notify/telegram.ts";
+import { sendTelegram } from "./notify/telegram.ts";
+import { deliver, toMarkSent } from "./deliver.ts";
 import { appendJsonl, loadSent, PREDICTIONS, saveSent } from "./state.ts";
 import { predict } from "./predict.ts";
 import type { Match, Prediction } from "./types.ts";
@@ -41,7 +42,8 @@ async function main() {
 
   // Matches left unpriced only because the budget ran out are held back for the next run, if that
   // run can still see them (it starts runIntervalMinutes later and needs leadMinMinutes to spare).
-  const canWait = (m: Match) => m.start.getTime() - now.getTime() > (config.runIntervalMinutes + config.leadMinMinutes) * 60_000;
+  // The extra minutes cover a timer that fires a little late.
+  const canWait = (m: Match) => m.start.getTime() - now.getTime() > (config.runIntervalMinutes + config.leadMinMinutes + config.holdMarginMinutes) * 60_000;
   const held = new Set([...skipped, ...skippedPapi].filter((m) => !m.odds?.books.length && canWait(m)));
   if (held.size) console.log(`[run] holding ${held.size} match(es) until the next run (odds budget used up)`);
   const ready = fresh.filter((m) => !held.has(m));
@@ -52,35 +54,38 @@ async function main() {
   const values = shown.filter((p) => p.value);
   console.log(`[run] ${shown.length} to show (${preds.length - shown.length} with no data skipped), ${values.length} value bet(s)`);
 
-  let ok = true;
-  if (config.digest) {
-    for (const msg of formatDigest(shown)) ok = (await sendTelegram(msg)) && ok;
-  }
-  for (const p of values) {
-    Object.assign(p.match.context, await fetchEspnContext(p.match));
-    p.factors.push(...injuryFactors(p.match));
-    const ai = await analyze(p);
-    if (ai) {
-      p.factors.unshift(...ai.key_factors);
-      p.risks.push(...ai.risks);
-      p.confidence = ai.confidence;
-      p.aiUsed = true;
-    }
-    p.factors = [...new Set(p.factors)];
-    ok = (await sendTelegram(formatAlert(p, now))) && ok;
-  }
+  const result = await deliver(shown, values, now, { send: sendTelegram, enrich });
 
-  // If Telegram failed, leave the matches unsent so the next run retries them.
-  if (!ok) {
-    console.error("[run] some messages failed; will retry next run");
+  // If the digest failed, leave everything unsent so the next run retries it. A failed value alert only
+  // keeps its own match unsent.
+  if (!result.digestOk) {
+    console.error("[run] digest failed; will retry next run");
     process.exitCode = 1;
     return;
   }
-  for (const p of preds) {
+  if (result.failedAlerts.length) {
+    console.error(`[run] ${result.failedAlerts.length} value alert(s) failed; those matches will be retried next run`);
+    process.exitCode = 1;
+  }
+  for (const p of toMarkSent(preds, result)) {
     sent[p.match.key] = now.toISOString();
     appendJsonl(PREDICTIONS, toLog(p, shown.includes(p)));
   }
   saveSent(sent);
+}
+
+/** Context for a value-bet alert: injuries and news from ESPN, plus the optional AI notes. */
+async function enrich(p: Prediction) {
+  Object.assign(p.match.context, await fetchEspnContext(p.match));
+  p.factors.push(...injuryFactors(p.match));
+  const ai = await analyze(p);
+  if (ai) {
+    p.factors.unshift(...ai.key_factors);
+    p.risks.push(...ai.risks);
+    p.confidence = ai.confidence;
+    p.aiUsed = true;
+  }
+  p.factors = [...new Set(p.factors)];
 }
 
 function injuryFactors(m: Match): string[] {

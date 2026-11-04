@@ -95,46 +95,74 @@ export function formatAlert(p: Prediction, now = new Date()): string {
     for (const r of p.risks.slice(0, 3)) L.push(` • ${esc(r)}`);
   }
   L.push("");
-  L.push(`Confidence: ${p.confidence} · prices move, so check the current odds${m.link ? ` · <a href="${esc(m.link)}">match page</a>` : ""}`);
+  L.push(`Confidence: ${p.confidence} · prices move, so check the current odds${m.link && /^https:\/\//.test(m.link) ? ` · <a href="${attr(m.link)}">match page</a>` : ""}`);
   return L.join("\n");
 }
 
-/** Join blocks with blank lines into messages under the length limit. */
+const plain = (html: string) =>
+  html.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+
+/**
+ * Join blocks with blank lines into messages under the length limit. A block that is too long on its
+ * own (a huge league) is split between lines, never inside one, so no HTML tag is ever cut in half.
+ */
 export function chunk(blocks: string[]): string[] {
   const out: string[] = [];
   let cur = "";
+  const add = (piece: string, sep: string) => {
+    if (cur && cur.length + sep.length + piece.length > MAX_LEN) { out.push(cur); cur = piece; }
+    else cur = cur ? cur + sep + piece : piece;
+  };
   for (const b of blocks) {
-    const piece = b.length > MAX_LEN ? b.slice(0, MAX_LEN) : b;
-    if (cur && cur.length + 2 + piece.length > MAX_LEN) {
-      out.push(cur);
-      cur = piece;
-    } else {
-      cur = cur ? `${cur}\n\n${piece}` : piece;
-    }
+    if (b.length <= MAX_LEN) { add(b, "\n\n"); continue; }
+    b.split("\n").forEach((line, i) => add(line.length > MAX_LEN ? plain(line).slice(0, MAX_LEN) : line, i === 0 ? "\n\n" : "\n"));
   }
   if (cur) out.push(cur);
   return out;
 }
 
+/** Cut a message that is over Telegram's limit at a line break (every line of ours is self-contained HTML). */
+export function fitTelegram(html: string): string {
+  if (html.length <= 4000) return html;
+  const kept: string[] = [];
+  let len = 0;
+  for (const line of html.split("\n")) {
+    if (len + line.length + 1 > MAX_LEN) break;
+    kept.push(line);
+    len += line.length + 1;
+  }
+  return kept.join("\n") || plain(html).slice(0, MAX_LEN);
+}
+
 export async function sendTelegram(html: string): Promise<boolean> {
   if (config.dryRun || !config.telegramToken || !config.telegramChatId) {
-    console.log("\n----- (dry run: message not sent) -----\n" + html.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+    console.log("\n----- (dry run: message not sent) -----\n" + plain(html));
     return true;
   }
-  for (let attempt = 0; attempt < 3; attempt++) {
+  let text = fitTelegram(html);
+  let asHtml = true;
+  for (let attempt = 0; attempt < 4; attempt++) {
     const res = await fetch(`https://api.telegram.org/bot${config.telegramToken}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: config.telegramChatId, text: html, parse_mode: "HTML", link_preview_options: { is_disabled: true } }),
-    }).catch((e) => ({ ok: false, status: 0, text: async () => String(e), json: async () => ({}) }) as unknown as Response);
+      body: JSON.stringify({ chat_id: config.telegramChatId, text, ...(asHtml ? { parse_mode: "HTML" } : {}), link_preview_options: { is_disabled: true } }),
+    }).catch((e) => ({ ok: false, status: 0, text: async () => String(e) }) as unknown as Response);
     if (res.ok) return true;
+    const body = await res.text();
     if (res.status === 429) {
-      // Telegram says how long to wait.
-      const body: any = await res.json().catch(() => ({}));
-      await new Promise((r) => setTimeout(r, 1000 * (body?.parameters?.retry_after ?? 3)));
+      let wait = 3;
+      try { wait = JSON.parse(body)?.parameters?.retry_after ?? 3; } catch { /* keep default */ }
+      await new Promise((r) => setTimeout(r, 1000 * wait));
       continue;
     }
-    console.error(`[telegram] send failed: ${await res.text()}`);
+    // Telegram refused the HTML (a character or tag it dislikes): send the same words as plain text instead of losing them.
+    if (res.status === 400 && asHtml && /parse entities/i.test(body)) {
+      console.warn("[telegram] HTML rejected; sending as plain text");
+      asHtml = false;
+      text = plain(text);
+      continue;
+    }
+    console.error(`[telegram] send failed: ${body}`);
     return false;
   }
   return false;

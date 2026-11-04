@@ -8,10 +8,12 @@ import { config } from "./config.ts";
 import { getJson, ymd } from "./http.ts";
 import { sendTelegram } from "./notify/telegram.ts";
 import { competitions, competitorName } from "./sources/espn.ts";
-import { buildReport } from "./report.ts";
-import { appendJsonl, PREDICTIONS, readJsonl, RESULTS } from "./state.ts";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { buildReport, givenUp, shouldSendReport } from "./report.ts";
+import { appendJsonl, DATA_DIR, PREDICTIONS, readJsonl, RESULTS } from "./state.ts";
 import type { Side } from "./types.ts";
 
+const REPORT_STATE = `${DATA_DIR}/report-state.json`;
 const ESPN = "https://site.api.espn.com/apis/site/v2/sports";
 
 /** "home" | "away" | "draw" when finished, null if void/unknowable, undefined if not finished yet. */
@@ -60,7 +62,11 @@ async function main() {
   const pending = readJsonl(PREDICTIONS).filter((p) => !done.has(p.key) && Date.now() - +new Date(p.start) > 4 * 3600_000);
   for (const p of pending) {
     const outcome = await lookup(p);
-    if (outcome === undefined) continue; // not finished yet
+    if (outcome === undefined) {
+      // Not finished yet. A postponed or abandoned match never will be: give up after a week.
+      if (givenUp(p.start, new Date())) appendJsonl(RESULTS, { key: p.key, outcome: null, checkedAt: new Date().toISOString() });
+      continue;
+    }
     appendJsonl(RESULTS, { key: p.key, outcome, checkedAt: new Date().toISOString() });
   }
 
@@ -68,7 +74,11 @@ async function main() {
   const summary = buildReport(readJsonl(PREDICTIONS), results);
   if (!summary) return console.log("[results] nothing graded yet");
   console.log(summary.replace(/<[^>]+>/g, ""));
-  if (process.env.SEND_REPORT === "1") await sendTelegram(summary);
+  if (process.env.SEND_REPORT !== "1") return;
+  let last: string | undefined;
+  try { last = existsSync(REPORT_STATE) ? JSON.parse(readFileSync(REPORT_STATE, "utf8")).sentAt : undefined; } catch { /* no record */ }
+  if (!shouldSendReport(last, new Date())) return console.log("[results] a report went out in the last few hours; skipping");
+  if ((await sendTelegram(summary)) && !config.dryRun) writeFileSync(REPORT_STATE, JSON.stringify({ sentAt: new Date().toISOString() }));
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

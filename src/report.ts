@@ -17,6 +17,18 @@ export const brier = (pr: Probabilities, o: Side) =>
 /** The score you'd get by always saying "equal chances": 0.50 for two-way matches, 0.667 for football. */
 const evenGuess = (hasDraw?: boolean) => (hasDraw ? 2 / 3 : 0.5);
 
+/** A match that still has no result a week after kickoff was postponed or abandoned: stop checking it. */
+export const givenUp = (startIso: string, now: Date, days = 7) => now.getTime() - new Date(startIso).getTime() > days * 86400_000;
+
+/**
+ * The report is triggered by both the outside timer and GitHub's own schedule, so skip it if one went out
+ * in the last few hours. (A manual test later in the day still goes through.)
+ */
+export function shouldSendReport(lastSentIso: string | undefined, now: Date, minHours = 6): boolean {
+  const last = lastSentIso ? new Date(lastSentIso).getTime() : NaN;
+  return !(Number.isFinite(last) && now.getTime() - last < minHours * 3600_000);
+}
+
 export function buildReport(rows: LoggedPrediction[], results: Map<string, Side | null>): string | undefined {
   const graded = rows.filter((p) => results.get(p.key));
   if (!graded.length) return undefined;

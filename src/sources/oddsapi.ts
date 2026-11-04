@@ -80,23 +80,30 @@ function sameEvent(m: Match, ev: any): boolean {
   const t = new Date(ev.commence_time).getTime();
   if (Math.abs(t - m.start.getTime()) > 3 * 3600_000) return false;
   const names = [ev.home_team, ev.away_team].filter(Boolean);
-  return names.length === 2 &&
-    ((similar(names[0], m.home.name) && similar(names[1], m.away.name)) ||
-     (similar(names[0], m.away.name) && similar(names[1], m.home.name)));
+  if (names.length !== 2) return false;
+  const direct = Math.min(nameScore(names[0], m.home.name), nameScore(names[1], m.away.name));
+  const swapped = Math.min(nameScore(names[0], m.away.name), nameScore(names[1], m.home.name));
+  return Math.max(direct, swapped) > 0;
 }
 
-/** Loose team-name match: "Manchester United" ~ "Man United", "LA Lakers" ~ "Los Angeles Lakers". */
-export function similar(a: string, b: string): boolean {
-  const tok = (s: string) =>
-    s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, " ")
-      .split(/\s+/).filter((w) => w.length > 2 && !["the", "club", "fc"].includes(w));
-  const A = tok(a), B = tok(b);
-  if (!A.length || !B.length) return false;
+const tokens = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/).filter((w) => w.length > 2 && !["the", "club", "fc"].includes(w));
+
+/**
+ * How well two team names match: 0 = no match, up to 1 = same words. Loose on purpose ("Manchester United"
+ * ~ "Man United", "LA Lakers" ~ "Los Angeles Lakers"), so callers pick the HIGHER score when a name could
+ * fit both sides ("Inter Milan" fits "AC Milan" too, because two-letter words are ignored).
+ */
+export function nameScore(a: string, b: string): number {
+  const A = tokens(a), B = tokens(b);
+  if (!A.length || !B.length) return 0;
   const hits = A.filter((w) => B.some((v) => v === w || v.startsWith(w) || w.startsWith(v))).length;
   const n = Math.min(A.length, B.length);
   // Short names must match fully, so "Manchester United" never matches "Manchester City".
-  return hits / n >= (n <= 2 ? 1 : 0.67);
+  return hits / n >= (n <= 2 ? 1 : 0.67) ? hits / Math.max(A.length, B.length) : 0;
 }
+export const similar = (a: string, b: string) => nameScore(a, b) > 0;
 
 /** One BookPrice per bookmaker, with outcomes mapped onto our home/away. */
 export function parseBooks(ev: any, m: Match): BookPrice[] {
@@ -105,9 +112,10 @@ export function parseBooks(ev: any, m: Match): BookPrice[] {
     const h2h = bk.markets?.find((x: any) => x.key === "h2h");
     const p: Partial<BookPrice> = { key: bk.key, title: bk.title, link: httpsLink(bk.link) };
     for (const o of h2h?.outcomes ?? []) {
-      if (o.name === "Draw") p.draw = o.price;
-      else if (similar(o.name, m.home.name)) p.home = o.price;
-      else if (similar(o.name, m.away.name)) p.away = o.price;
+      if (o.name === "Draw") { p.draw = o.price; continue; }
+      const sh = nameScore(o.name, m.home.name), sa = nameScore(o.name, m.away.name);
+      if (sh > sa) p.home = o.price; // ties (a name that fits both equally) are skipped, not guessed
+      else if (sa > sh) p.away = o.price;
     }
     if (p.home && p.away) out.push(p as BookPrice);
   }

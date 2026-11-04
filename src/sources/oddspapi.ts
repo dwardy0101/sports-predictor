@@ -9,16 +9,18 @@
  *  - OddsBudget caps the daily spend, and /account (free) gives the true balance.
  * OddsPapi gives participant IDs, not names, so names come from a cached /participants list.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { config } from "../config.ts";
 import { httpsLink } from "../http.ts";
 import { DATA_DIR } from "../state.ts";
 import { OddsBudget } from "../odds/budget.ts";
-import { similar } from "./oddsapi.ts";
+import { nameScore } from "./oddsapi.ts";
 import type { BookPrice, Match, SportGroup } from "../types.ts";
 
 const BASE = "https://api.oddspapi.io/v4";
-const CACHE = `${DATA_DIR}/oddspapi-cache.json`;
+const OLD_CACHE = `${DATA_DIR}/oddspapi-cache.json`; // one big file in earlier versions
+const TOURNAMENTS_FILE = `${DATA_DIR}/oddspapi-tournaments.json`;
+const NAMES_FILE = `${DATA_DIR}/oddspapi-names.json`;
 const BUDGET = `${DATA_DIR}/oddspapi-budget.json`;
 const LIST_TTL = 20 * 3600_000;
 
@@ -62,13 +64,15 @@ const tokens = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !NOISE.has(w));
 
 /** Real tournaments only: tennis tour level, no doubles, no "Simulated Reality" fake esports. */
-function eligible(t: Tournament, sportId: number): boolean {
-  // A tournament with a match in play today often shows 0 "upcoming" until tomorrow's draw is out.
-  if (!(t.upcomingFixtures > 0 || (t.liveFixtures ?? 0) > 0)) return false;
-  const label = `${t.categoryName} ${t.tournamentName}`;
-  if (/simulated|\bsrl\b/i.test(label)) return false;
+export function worthKeeping(t: Tournament, sportId: number): boolean {
+  if (/simulated|\bsrl\b/i.test(`${t.categoryName} ${t.tournamentName}`)) return false;
   if (sportId === 12) return /^(ATP|WTA)\b/i.test(t.categoryName) && !/doubles/i.test(t.tournamentName);
   return true;
+}
+
+function eligible(t: Tournament, sportId: number): boolean {
+  // A tournament with a match in play today often shows 0 "upcoming" until tomorrow's draw is out.
+  return (t.upcomingFixtures > 0 || (t.liveFixtures ?? 0) > 0) && worthKeeping(t, sportId);
 }
 
 /**
@@ -94,18 +98,27 @@ export function matchFixture(m: Match, fx: any, names: Record<string, string>): 
   if (Math.abs(new Date(fx.startTime).getTime() - m.start.getTime()) > 3 * 3600_000) return undefined;
   const n1 = names[String(fx.participant1Id)], n2 = names[String(fx.participant2Id)];
   if (!n1 || !n2) return undefined;
-  if (similar(n1, m.home.name) && similar(n2, m.away.name)) return { swap: false };
-  if (similar(n1, m.away.name) && similar(n2, m.home.name)) return { swap: true };
+  const direct = Math.min(nameScore(n1, m.home.name), nameScore(n2, m.away.name));
+  const swapped = Math.min(nameScore(n1, m.away.name), nameScore(n2, m.home.name));
+  if (direct > 0 && direct >= swapped) return { swap: false };
+  if (swapped > 0) return { swap: true };
   return undefined;
 }
 
-function loadCache(): Cache {
-  if (existsSync(CACHE)) {
-    try { return JSON.parse(readFileSync(CACHE, "utf8")) as Cache; } catch { /* start fresh */ }
-  }
-  return { tournaments: {}, participants: {} };
+function readJson<T>(file: string, fallback: T): T {
+  if (!existsSync(file)) return fallback;
+  try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return fallback; }
 }
-const saveCache = (c: Cache) => writeFileSync(CACHE, JSON.stringify(c));
+/** Two small files instead of one big one, so a daily list refresh doesn't rewrite the 25,000 player names. */
+function loadCache(): Cache {
+  const old = readJson<Partial<Cache>>(OLD_CACHE, {});
+  return { tournaments: readJson(TOURNAMENTS_FILE, old.tournaments ?? {}), participants: readJson(NAMES_FILE, old.participants ?? {}) };
+}
+function saveCache(c: Cache) {
+  writeFileSync(TOURNAMENTS_FILE, JSON.stringify(c.tournaments));
+  writeFileSync(NAMES_FILE, JSON.stringify(c.participants));
+  rmSync(OLD_CACHE, { force: true });
+}
 
 /** One call. Never logs the URL (it contains the key). Waits and retries on HTTP 429. */
 async function papiGet(path: string, params: Record<string, string | number> = {}): Promise<any | null> {
@@ -115,7 +128,11 @@ async function papiGet(path: string, params: Record<string, string | number> = {
       u.searchParams.set("apiKey", config.oddspapiKey);
       for (const [k, v] of Object.entries(params)) u.searchParams.set(k, String(v));
       const r = await fetch(u, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(90_000) });
-      if (r.status === 429) { await sleep(Math.max(config.oddspapiGapMs, 1000) * 2); continue; }
+      if (r.status === 429) {
+        if (/REQUEST_LIMIT_EXCEEDED/.test(await r.text().catch(() => ""))) { console.warn("[oddspapi] monthly request limit reached"); return null; }
+        await sleep(Math.max(config.oddspapiGapMs, 1000) * 2); // too many calls too fast: wait and retry
+        continue;
+      }
       if (!r.ok) { console.warn(`[oddspapi] ${path} HTTP ${r.status}`); return null; }
       return await r.json();
     } catch (err) {
@@ -162,7 +179,7 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
     // about once a day, and straight away if nothing matches and the list is a few hours old.
     const refresh = async (sid: number) => {
       const list = await spend("/tournaments", { sportId: sid });
-      if (Array.isArray(list)) { cache.tournaments[sid] = { at: now.getTime(), list }; saveCache(cache); }
+      if (Array.isArray(list)) { cache.tournaments[sid] = { at: now.getTime(), list: list.filter((t: Tournament) => worthKeeping(t, sid)) }; saveCache(cache); }
     };
     const pick = () => {
       const lists: Record<number, Tournament[]> = {};

@@ -1,7 +1,7 @@
 // A saved tournament list that predates today's draw must not hide the tournament.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -42,7 +42,13 @@ test("an old list that shows nothing is refreshed, then the matches are priced",
     calls.push(u.pathname.replace("/v4", "") + (u.searchParams.get("bookmaker") ? `?${u.searchParams.get("bookmaker")}` : ""));
     const json = (x: unknown) => new Response(JSON.stringify(x), { status: 200 });
     if (u.pathname.endsWith("/account")) return json({ subscriptions: [{ is_active: true, request_limit: 250, request_count: 30 }] });
-    if (u.pathname.endsWith("/tournaments")) return json([hk(4, 0)]); // today's draw is out now
+    if (u.pathname.endsWith("/tournaments")) {
+      // Today's draw is out now. The list also holds junk that must not be saved.
+      return json([hk(4, 0),
+        { tournamentId: 5, tournamentName: "ITF Women Somewhere", categoryName: "ITF Women", upcomingFixtures: 9 },
+        { tournamentId: 6, tournamentName: "WTA Hong Kong Women Doubles", categoryName: "WTA", upcomingFixtures: 2 },
+        { tournamentId: 7, tournamentName: "SRL Hong Kong", categoryName: "Simulated Reality", upcomingFixtures: 3 }]);
+    }
     if (u.pathname.endsWith("/odds-by-tournaments")) {
       const fx = { fixtureId: "f1", participant1Id: 11, participant2Id: 22, sportId: 12, tournamentId: 11111, statusId: 0, startTime: START.toISOString() };
       const b = u.searchParams.get("bookmaker")!;
@@ -57,6 +63,11 @@ test("an old list that shows nothing is refreshed, then the matches are priced",
     assert.equal(m.odds?.books.length, 2);
     assert.equal(m.odds?.books[1].link, "https://1xbet.example/hk");
     assert.deepEqual(calls.filter((c) => !c.includes("account")), ["/tournaments", "/odds-by-tournaments?pinnacle", "/odds-by-tournaments?1xbet"]);
+    // The old one-file cache was migrated into two small files holding only real tournaments.
+    assert.equal(existsSync(join(dir, "oddspapi-cache.json")), false);
+    const saved = JSON.parse(readFileSync(join(dir, "oddspapi-tournaments.json"), "utf8"));
+    assert.deepEqual(saved["12"].list.map((t: any) => t.tournamentId), [11111]);
+    assert.ok(Object.keys(JSON.parse(readFileSync(join(dir, "oddspapi-names.json"), "utf8"))["12"].names).length >= 2);
   } finally {
     globalThis.fetch = realFetch;
   }

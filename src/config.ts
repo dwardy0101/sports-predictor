@@ -23,6 +23,8 @@ export const config = {
   runIntervalMinutes: num(env.RUN_INTERVAL_MINUTES, 120),
   /** Timezone for the times shown in Telegram messages (12-hour clock). */
   timezone: zone(env.TIMEZONE),
+  /** Extra minutes of safety when deciding a match can wait for the next run (timers fire a little late). */
+  holdMarginMinutes: 10,
   /** Minimum expected value (%) for a value-bet alert. */
   minEdgePct: num(env.MIN_EDGE_PCT, 3),
   /** Also list matches we know nothing about (no odds, no stats). Off by default: they'd all be 50/50. */
