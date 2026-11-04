@@ -40,5 +40,8 @@ export function ymd(d: Date): string {
 /** ISO time without milliseconds (The Odds API rejects them). */
 export const isoSec = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
 
+/** Only https links are passed on (they end up in Telegram messages). */
+export const httpsLink = (u: unknown): string | undefined => (typeof u === "string" && /^https:\/\/[^\s"<>]+$/.test(u) ? u : undefined);
+
 /** Lowercase, accents stripped, letters and digits only. For matching names across sources. */
 export const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");

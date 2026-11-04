@@ -11,6 +11,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { config } from "../config.ts";
+import { httpsLink } from "../http.ts";
 import { DATA_DIR } from "../state.ts";
 import { OddsBudget } from "../odds/budget.ts";
 import { similar } from "./oddsapi.ts";
@@ -201,7 +202,7 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
           if (fx.sportId !== sid || fx.statusId !== 0) continue;
           const o = matchFixture(m, fx, names);
           const p = o && winnerPrices(fx, slug, sid);
-          if (o && p) { books.push({ key: slug, title: title(slug), home: o.swap ? p.p2 : p.p1, away: o.swap ? p.p1 : p.p2 }); break; }
+          if (o && p) { books.push({ key: slug, title: title(slug), home: o.swap ? p.p2 : p.p1, away: o.swap ? p.p1 : p.p2, link: httpsLink(fx.bookmakerOdds?.[slug]?.fixturePath) }); break; }
         }
       }
       if (books.length) { m.odds = { books, source: "OddsPapi" }; matched++; }

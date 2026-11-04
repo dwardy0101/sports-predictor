@@ -3,6 +3,9 @@ import type { Prediction, Probabilities } from "../types.ts";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const pct = (p: number) => `${Math.round(p * 100)}%`;
+const attr = (s: string) => esc(s).replace(/"/g, "&quot;");
+/** A small tappable link icon, only for https links. */
+const icon = (u?: string) => (u && /^https:\/\//.test(u) ? ` <a href="${attr(u)}">🔗</a>` : "");
 const tzLabel = () => (config.timezone === "Asia/Manila" ? "PHT" : config.timezone);
 const part = (d: Date, opts: Intl.DateTimeFormatOptions) =>
   new Intl.DateTimeFormat("en-US", { timeZone: config.timezone, ...opts }).format(d).replace(/\u202f/g, " ");
@@ -47,11 +50,11 @@ export function formatDigest(preds: Prediction[]): string[] {
     const lines = [`${ICON[sport] ?? "🏟"} <b>${esc(league)}</b>`];
     for (const p of ps) {
       const gem = p.value ? " 💎" : "";
-      lines.push(`${clockOn(p.match.start, first)} ${probLine(p, p.final)} <i>${sourceTag(p)}</i>${gem}`);
+      lines.push(`${clockOn(p.match.start, first)} ${probLine(p, p.final)} <i>${sourceTag(p)}</i>${gem}${icon(p.betLink)}`);
     }
     blocks.push(lines.join("\n"));
   }
-  const footer = "<i>P = Pinnacle no-vig · C = bookmaker consensus · B = one bookmaker · M = stats model only. 💎 = value bet (details follow).</i>";
+  const footer = "<i>P = Pinnacle no-vig · C = bookmaker consensus · B = one bookmaker · M = stats model only. 💎 = value bet (details follow). 🔗 = match page at your bookmaker.</i>";
   return chunk([header, ...blocks, footer]);
 }
 
@@ -63,7 +66,8 @@ export function formatAlert(p: Prediction, now = new Date()): string {
   const pick = v.side === "home" ? A : v.side === "away" ? B : "Draw";
 
   const L: string[] = [];
-  L.push(`💎 <b>Value bet: ${pick} @ ${v.price.toFixed(2)}</b> on ${esc(v.book)}`);
+  const where = v.link && /^https:\/\//.test(v.link) ? `<a href="${attr(v.link)}">${esc(v.book)}</a>` : esc(v.book);
+  L.push(`💎 <b>Value bet: ${pick} @ ${v.price.toFixed(2)}</b> on ${where}`);
   L.push(`${ICON[m.sport] ?? "🏟"} ${A} vs ${B}`);
   L.push(`🏆 ${esc(m.league)}${m.bestOf ? ` · Bo${m.bestOf}` : ""}`);
   L.push(`🕒 ${dayLabel(m.start)} · ${clock(m.start)} ${tzLabel()} (in ${Math.floor(mins / 60)}h ${mins % 60}m)`);

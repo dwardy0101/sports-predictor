@@ -7,7 +7,7 @@
  * Listing the sports (/sports) is free.
  */
 import { config, ESPN_LEAGUES, ODDS_PRIORITY } from "../config.ts";
-import { getJson, getJsonRes, isoSec } from "../http.ts";
+import { getJson, getJsonRes, httpsLink, isoSec } from "../http.ts";
 import type { OddsBudget } from "../odds/budget.ts";
 import type { BookPrice, Match } from "../types.ts";
 
@@ -50,7 +50,7 @@ export async function attachOdds(matches: Match[], budget: OddsBudget): Promise<
     const from = new Date(Math.min(...ms.map((m) => +m.start)) - 3600_000);
     const to = new Date(Math.max(...ms.map((m) => +m.start)) + 3600_000);
     const { data, headers } = await getJsonRes<any[]>(
-      `${BASE}/sports/${sportKey}/odds?apiKey=${config.oddsApiKey}&regions=${config.oddsRegions}&markets=h2h&oddsFormat=decimal` +
+      `${BASE}/sports/${sportKey}/odds?apiKey=${config.oddsApiKey}&regions=${config.oddsRegions}&markets=h2h&oddsFormat=decimal&includeLinks=true` +
         `&commenceTimeFrom=${isoSec(from)}&commenceTimeTo=${isoSec(to)}`,
     );
     budget.record(headers?.get("x-requests-remaining"), headers?.get("x-requests-last"));
@@ -103,7 +103,7 @@ export function parseBooks(ev: any, m: Match): BookPrice[] {
   const out: BookPrice[] = [];
   for (const bk of ev.bookmakers ?? []) {
     const h2h = bk.markets?.find((x: any) => x.key === "h2h");
-    const p: Partial<BookPrice> = { key: bk.key, title: bk.title };
+    const p: Partial<BookPrice> = { key: bk.key, title: bk.title, link: httpsLink(bk.link) };
     for (const o of h2h?.outcomes ?? []) {
       if (o.name === "Draw") p.draw = o.price;
       else if (similar(o.name, m.home.name)) p.home = o.price;

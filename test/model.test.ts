@@ -4,11 +4,11 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eloWinProb, footballProbs, log5, modelProbs, rankWinProb, shrunkWinRate } from "../src/model/probability.ts";
-import { bestPrices, devigBook, fairProbs, findValue } from "../src/odds/fair.ts";
+import { bestPrices, bookLink, devigBook, fairProbs, findValue } from "../src/odds/fair.ts";
 import { OddsBudget } from "../src/odds/budget.ts";
 import { americanToDecimal, parseRecord } from "../src/sources/espn.ts";
 import { computeElo } from "../src/sources/esports.ts";
-import { sameTournament, similar } from "../src/sources/oddsapi.ts";
+import { parseBooks, sameTournament, similar } from "../src/sources/oddsapi.ts";
 import { chunk, clock, dayLabel, formatAlert, formatDigest } from "../src/notify/telegram.ts";
 import { predict } from "../src/predict.ts";
 import type { MarketOdds, Match } from "../src/types.ts";
@@ -198,6 +198,30 @@ test("times are shown in Manila time on a 12-hour clock", () => {
   assert.doesNotMatch(digest, /UTC/);
   const m = base({ start: new Date("2026-11-03T15:30:00Z"), odds: odds(["pinnacle", 2.0, 1.9], ["unibet", 2.25, 1.7]) });
   assert.match(formatAlert(predict(m), new Date("2026-11-03T14:00:00Z")), /🕒 Tue, Nov 3 · 11:30 PM PHT \(in 1h 30m\)/);
+});
+
+test("bookmaker links: kept from the odds service, only https, shown as a link icon and on the alert", () => {
+  const ev = { bookmakers: [
+    { key: "pinnacle", title: "Pinnacle", link: "https://www.pinnacle.com/en/x/1", markets: [{ key: "h2h", outcomes: [{ name: "Alpha Team", price: 2.0 }, { name: "Bravo Team", price: 1.9 }] }] },
+    { key: "onexbet", title: "1xBet", link: "https://1xbet.com/en/line/x?a=1&b=2", markets: [{ key: "h2h", outcomes: [{ name: "Alpha Team", price: 2.25 }, { name: "Bravo Team", price: 1.7 }] }] },
+    { key: "sketchy", title: "Sketchy", link: "javascript:alert(1)", markets: [{ key: "h2h", outcomes: [{ name: "Alpha Team", price: 1.5 }, { name: "Bravo Team", price: 2.5 }] }] },
+  ] };
+  const teams = { home: { name: "Alpha Team" }, away: { name: "Bravo Team" } };
+  const m = base({ ...teams, odds: { books: parseBooks(ev, base(teams)), source: "The Odds API" } });
+  assert.equal(m.odds!.books[2].link, undefined); // not https: dropped
+  assert.equal(bookLink(m.odds, ["1xbet"]), "https://1xbet.com/en/line/x?a=1&b=2"); // matches the title "1xBet"
+  assert.equal(bookLink(m.odds, ["bet365"]), undefined);
+  const p = predict(m);
+  assert.equal(p.betLink, "https://1xbet.com/en/line/x?a=1&b=2"); // default bookmaker is 1xBet
+  assert.equal(p.value?.link, "https://1xbet.com/en/line/x?a=1&b=2");
+  const [digest] = formatDigest([p]);
+  assert.match(digest, /<a href="https:\/\/1xbet\.com\/en\/line\/x\?a=1&amp;b=2">🔗<\/a>/); // & escaped inside the attribute
+  assert.match(formatAlert(p), /on <a href="https:\/\/1xbet\.com[^"]*">1xBet<\/a>/);
+  // No link known: no icon, plain bookmaker name.
+  const none = predict(base({ odds: odds(["pinnacle", 2.0, 1.9], ["onexbet", 2.25, 1.7]) }));
+  assert.equal(none.betLink, undefined);
+  assert.doesNotMatch(formatDigest([none])[0], /<a href=/);
+  assert.doesNotMatch(formatAlert(none), /<a href=/);
 });
 
 test("digest groups by league and escapes HTML; alert explains the value", () => {

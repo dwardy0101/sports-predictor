@@ -74,10 +74,19 @@ export function bestPrices(odds: MarketOdds | undefined, hasDraw: boolean, allow
     if (EXCHANGE.test(b.key) || !usable(b, allow)) continue;
     for (const side of (hasDraw ? ["home", "away", "draw"] : ["home", "away"]) as Side[]) {
       const p = b[side];
-      if (typeof p === "number" && p > 1 && (!out[side] || p > out[side]!.price)) out[side] = { price: p, book: b.title };
+      if (typeof p === "number" && p > 1 && (!out[side] || p > out[side]!.price)) out[side] = { price: p, book: b.title, link: b.link };
     }
   }
   return out.home && out.away ? out : undefined;
+}
+
+/** Match page at the bookmaker you bet with: the first of `prefer` that has one. */
+export function bookLink(odds: MarketOdds | undefined, prefer: string[]): string | undefined {
+  for (const name of prefer) {
+    const b = (odds?.books ?? []).find((x) => x.link && usable(x, [name.toLowerCase()]));
+    if (b) return b.link;
+  }
+  return undefined;
 }
 
 /**
@@ -98,7 +107,7 @@ export function findValue(fair: Fair | undefined, best: BestPrices | undefined, 
       console.warn(`[value] ignoring suspicious +${evPct.toFixed(1)}% on ${side} @ ${o.price} (${o.book})`);
       continue;
     }
-    if (!top || evPct > top.evPct) top = { side, price: o.price, book: o.book, fairPrice: 1 / p, evPct };
+    if (!top || evPct > top.evPct) top = { side, price: o.price, book: o.book, link: o.link, fairPrice: 1 / p, evPct };
   }
   return top && top.evPct >= minEdgePct ? top : undefined;
 }

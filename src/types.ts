@@ -23,6 +23,8 @@ export interface BookPrice {
   home: number;
   away: number;
   draw?: number;
+  /** Page for this match at the bookmaker, if the odds service gave one. */
+  link?: string;
 }
 
 export interface MarketOdds {
@@ -46,12 +48,14 @@ export interface Fair {
   kind: "sharp" | "consensus" | "single";
 }
 
-export type BestPrices = Partial<Record<Side, { price: number; book: string }>>;
+export type BestPrices = Partial<Record<Side, { price: number; book: string; link?: string }>>;
 
 export interface Value {
   side: Side;
   price: number;
   book: string;
+  /** Match page at that bookmaker, if known. */
+  link?: string;
   /** 1 / fair probability. */
   fairPrice: number;
   /** Expected value in percent: fair probability × price − 1. */
@@ -91,6 +95,8 @@ export interface Prediction {
   /** What we show: fair market probabilities if we have odds, else the stats model. */
   final: Probabilities;
   best?: BestPrices;
+  /** Match page at the bookmaker you bet with (BOOKMAKERS, default 1xBet), if known. */
+  betLink?: string;
   value?: Value;
   confidence: "low" | "medium" | "high";
   factors: string[];

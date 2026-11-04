@@ -27,7 +27,7 @@ const market = (id: number, p1: number, p2: number, active = true) => ({
 const fixture = (over: any = {}, book = "pinnacle", p1 = 1.5, p2 = 2.6, sport = 12) => ({
   fixtureId: "f1", participant1Id: 11, participant2Id: 22, sportId: sport, tournamentId: 37307, statusId: 0, hasOdds: true,
   startTime: START.toISOString(),
-  bookmakerOdds: { [book]: { suspended: false, markets: { [({ 12: 121, 16: 161, 17: 171 } as any)[sport]]: market(({ 12: 121, 16: 161, 17: 171 } as any)[sport], p1, p2) } } },
+  bookmakerOdds: { [book]: { suspended: false, fixturePath: `https://${book}.example/match/1`, markets: { [({ 12: 121, 16: 161, 17: 171 } as any)[sport]]: market(({ 12: 121, 16: 161, 17: 171 } as any)[sport], p1, p2) } } },
   ...over,
 });
 
@@ -100,6 +100,7 @@ test("end to end: fake OddsPapi prices a tennis match, and a value bet appears",
     await attachPapiOdds([m, unrelated], NOW);
     assert.equal(m.odds?.source, "OddsPapi");
     assert.deepEqual(m.odds!.books.map((b) => [b.key, b.home, b.away]), [["pinnacle", 1.62, 2.38], ["1xbet", 1.55, 2.6]]);
+    assert.equal(m.odds!.books[1].link, "https://1xbet.example/match/1");
     assert.equal(unrelated.odds, undefined);
 
     const p = predict(m);

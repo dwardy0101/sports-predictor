@@ -5,7 +5,7 @@ Every 2 hours this bot:
 1. Finds matches starting in about **15–150 minutes**: NBA, WNBA, top football (soccer) leagues, ATP/WTA tennis, Dota 2 and CS2 (college basketball optional).
 2. Gets odds from **many bookmakers, including Pinnacle** (the sharpest one).
 3. Works out the **fair chances** by removing Pinnacle's margin (power method, which corrects the favourite–longshot bias) (or using the consensus of several bookmakers). With no odds, it falls back to a simple stats model: tennis world rankings, esports Elo, season records.
-4. Sends **one Telegram digest** of everything starting soon.
+4. Sends **one Telegram digest** of everything starting soon. A 🔗 on a line opens that match at your bookmaker (1xBet by default, set by `BOOKMAKERS`) when the odds service provides the page.
 5. Sends a **separate alert for each value bet**: a bookmaker paying more than the fair price. Alerts include injuries, news and (optionally) AI notes on what could make it a trap.
 6. Logs everything and sends a **daily accuracy report** with the profit or loss of every value bet.
 
