@@ -37,7 +37,7 @@ export function formatDigest(preds: Prediction[]): string[] {
   if (!preds.length) return [];
   const sorted = [...preds].sort((a, b) => +a.match.start - +b.match.start);
   const first = sorted[0].match.start, last = sorted[sorted.length - 1].match.start;
-  const header = `⏱ <b>Starting soon</b> · ${preds.length} match${preds.length > 1 ? "es" : ""} · ${dayLabel(first)} · ${clock(first)}–${clockOn(last, first)} ${tzLabel()}`;
+  const header = `⏱ <b>Starting soon</b> · ${preds.length} match${preds.length > 1 ? "es" : ""} · ${dayLabel(first)} · ${clock(first)}${clock(last) === clock(first) && dayKey(last) === dayKey(first) ? "" : `–${clockOn(last, first)}`} ${tzLabel()}`;
 
   const blocks: string[] = [];
   const byLeague = new Map<string, Prediction[]>();

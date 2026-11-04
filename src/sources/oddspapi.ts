@@ -20,7 +20,7 @@ import type { BookPrice, Match, SportGroup } from "../types.ts";
 const BASE = "https://api.oddspapi.io/v4";
 const CACHE = `${DATA_DIR}/oddspapi-cache.json`;
 const BUDGET = `${DATA_DIR}/oddspapi-budget.json`;
-const DAY = 86400_000;
+const LIST_TTL = 20 * 3600_000;
 
 /** OddsPapi sport ids for the sports we use it for. */
 export const SPORT_ID: Partial<Record<SportGroup, number>> = { tennis: 12, dota2: 16, cs2: 17 };
@@ -29,9 +29,10 @@ const WINNER_MARKET: Record<number, number> = { 12: 121, 16: 161, 17: 171 };
 /** At most this many tournaments per bulk call (OddsPapi rejects more). */
 const MAX_TOURNAMENTS = 5;
 
-export interface Tournament { tournamentId: number; tournamentName: string; categoryName: string; upcomingFixtures: number }
+export interface Tournament { tournamentId: number; tournamentName: string; categoryName: string; upcomingFixtures: number; liveFixtures?: number }
 interface Cache {
-  tournaments: Record<string, { at: number; list: Tournament[] }>;
+  /** `miss` = when a fresh list still had no tournament for our matches (so we don't keep re-fetching). */
+  tournaments: Record<string, { at: number; list: Tournament[]; miss?: number }>;
   participants: Record<string, { at: number; names: Record<string, string> }>;
 }
 
@@ -62,7 +63,8 @@ const tokens = (s: string) =>
 
 /** Real tournaments only: tennis tour level, no doubles, no "Simulated Reality" fake esports. */
 function eligible(t: Tournament, sportId: number): boolean {
-  if (!(t.upcomingFixtures > 0)) return false;
+  // A tournament with a match in play today often shows 0 "upcoming" until tomorrow's draw is out.
+  if (!(t.upcomingFixtures > 0 || (t.liveFixtures ?? 0) > 0)) return false;
   const label = `${t.categoryName} ${t.tournamentName}`;
   if (/simulated|\bsrl\b/i.test(label)) return false;
   if (sportId === 12) return /^(ATP|WTA)\b/i.test(t.categoryName) && !/doubles/i.test(t.tournamentName);
@@ -156,16 +158,34 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
       return out;
     };
 
-    // Tournament lists (refresh after 3 days): they say which tournaments have upcoming matches.
-    for (const sid of sids) {
-      const c = cache.tournaments[sid];
-      if (c && now.getTime() - c.at < 3 * DAY) continue;
+    // Tournament lists say which tournaments have matches. Schedules change daily, so refresh them
+    // about once a day, and straight away if nothing matches and the list is a few hours old.
+    const refresh = async (sid: number) => {
       const list = await spend("/tournaments", { sportId: sid });
       if (Array.isArray(list)) { cache.tournaments[sid] = { at: now.getTime(), list }; saveCache(cache); }
+    };
+    const pick = () => {
+      const lists: Record<number, Tournament[]> = {};
+      for (const sid of sids) if (cache.tournaments[sid]) lists[sid] = cache.tournaments[sid].list;
+      return pickTournaments(lists, needy);
+    };
+    for (const sid of sids) {
+      const c = cache.tournaments[sid];
+      if (!c || now.getTime() - c.at >= LIST_TTL) await refresh(sid);
     }
-    const lists: Record<number, Tournament[]> = {};
-    for (const sid of sids) if (cache.tournaments[sid]) lists[sid] = cache.tournaments[sid].list;
-    const ids = pickTournaments(lists, needy);
+    let ids = pick();
+    if (!ids.length) {
+      for (const sid of sids) {
+        const c = cache.tournaments[sid];
+        const recentMiss = c?.miss && now.getTime() - c.miss < 12 * 3600_000;
+        if (c && now.getTime() - c.at > 4 * 3600_000 && !recentMiss) await refresh(sid);
+      }
+      ids = pick();
+      if (!ids.length) {
+        for (const sid of sids) if (cache.tournaments[sid]) cache.tournaments[sid].miss = now.getTime();
+        saveCache(cache);
+      }
+    }
     if (!ids.length) {
       console.log(`[oddspapi] no active tournament matches ${needy.length} unpriced match(es)${blocked ? " (budget blocked a list refresh)" : ""}`);
       return blocked ? needy : [];
