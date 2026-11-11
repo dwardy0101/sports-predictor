@@ -58,11 +58,21 @@ jobs:
           LEAD_MIN_MINUTES: ${{ vars.LEAD_MIN_MINUTES }}
           LEAD_MAX_MINUTES: ${{ vars.LEAD_MAX_MINUTES }}
           MIN_EDGE_PCT: ${{ vars.MIN_EDGE_PCT }}
+          MIN_EDGE_CONSENSUS_PCT: ${{ vars.MIN_EDGE_CONSENSUS_PCT }}
+          MAX_EDGE_PCT: ${{ vars.MAX_EDGE_PCT }}
+          MAX_ODDS_AGE_MINUTES: ${{ vars.MAX_ODDS_AGE_MINUTES }}
+          KELLY_FRACTION: ${{ vars.KELLY_FRACTION }}
+          MAX_STAKE_PCT: ${{ vars.MAX_STAKE_PCT }}
+          BANKROLL: ${{ vars.BANKROLL }}
           DIGEST: ${{ vars.DIGEST }}
           ODDS_REGIONS: ${{ vars.ODDS_REGIONS }}
           BOOKMAKERS: ${{ vars.BOOKMAKERS }}
           TIMEZONE: ${{ vars.TIMEZONE }}
           ESPORTS_TIERS: ${{ vars.ESPORTS_TIERS }}
+          TRACK_CLV: ${{ vars.TRACK_CLV }}
+          WATCHDOG_RUNS: ${{ vars.WATCHDOG_RUNS }}
+          FETCH_CONCURRENCY: ${{ vars.FETCH_CONCURRENCY }}
+          KEEP_DAYS: ${{ vars.KEEP_DAYS }}
 
       - name: Accuracy report
         if: ${{ github.event.schedule == '23 6 * * *' || inputs.report == true }}
@@ -72,6 +82,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           PANDASCORE_TOKEN: ${{ secrets.PANDASCORE_TOKEN }}
+          KEEP_DAYS: ${{ vars.KEEP_DAYS }}
+          FETCH_CONCURRENCY: ${{ vars.FETCH_CONCURRENCY }}
 
       - name: Save state
         if: always()
