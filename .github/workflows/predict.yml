@@ -81,4 +81,18 @@ jobs:
           git add -A
           git diff --cached --quiet && exit 0
           git commit -q -m "state $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push -q origin bot-data
+          # Another run (a manual one, or the daily report) may have pushed meanwhile.
+          # Rebase onto it and try again instead of failing and losing this run's state.
+          for attempt in 1 2 3; do
+            if git push -q origin HEAD:bot-data; then exit 0; fi
+            echo "push rejected (attempt $attempt); rebasing onto the remote state"
+            git fetch -q origin bot-data || true
+            if ! git rebase -q FETCH_HEAD; then
+              echo "::warning::state files conflicted; keeping this run's version"
+              git rebase --abort || true
+              git merge -q -X ours FETCH_HEAD -m "merge remote state (keeping this run's)" || true
+            fi
+            sleep 3
+          done
+          echo "::error::could not save state to the bot-data branch"
+          exit 1

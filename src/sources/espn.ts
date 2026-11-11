@@ -2,8 +2,8 @@
  * ESPN's public JSON endpoints: free, no API key. Unofficial, so fields can
  * change; every read here is defensive and skips anything it can't parse.
  */
-import { ESPN_LEAGUES, type LeagueDef } from "../config.ts";
-import { getJson, norm, ymd } from "../http.ts";
+import { config, ESPN_LEAGUES, type LeagueDef } from "../config.ts";
+import { getJson, norm, pool, ymd } from "../http.ts";
 import type { MarketOdds, Match, SportGroup, TeamSide } from "../types.ts";
 
 const BASE = "https://site.api.espn.com/apis/site/v2/sports";
@@ -14,15 +14,16 @@ export async function fetchEspnMatches(groups: SportGroup[], from: Date, to: Dat
   const days = new Set<string>();
   for (let t = from.getTime() - 86400000; t <= to.getTime() + 86400000; t += 86400000) days.add(ymd(new Date(t)));
 
-  for (const g of groups) {
-    for (const lg of ESPN_LEAGUES[g] ?? []) {
-      for (const day of days) {
-        const data = await getJson(`${BASE}/${lg.sport}/${lg.league}/scoreboard?dates=${day}&limit=300`);
-        for (const { ev, comp, label } of competitions(data)) {
-          const m = parseCompetition(ev, comp, lg, label);
-          if (m && m.start >= from && m.start <= to) out.push(m);
-        }
-      }
+  // One request per league per day: a few dozen independent calls, so they run in parallel.
+  const jobs = groups.flatMap((g) => (ESPN_LEAGUES[g] ?? []).flatMap((lg) => [...days].map((day) => ({ lg, day }))));
+  const pages = await pool(jobs, config.fetchConcurrency, async ({ lg, day }) => ({
+    lg,
+    data: await getJson(`${BASE}/${lg.sport}/${lg.league}/scoreboard?dates=${day}&limit=300`),
+  }));
+  for (const { lg, data } of pages) {
+    for (const { ev, comp, label } of competitions(data)) {
+      const m = parseCompetition(ev, comp, lg, label);
+      if (m && m.start >= from && m.start <= to) out.push(m);
     }
   }
   // Same event can appear on two "dates" pages.
@@ -139,15 +140,14 @@ function parseEspnOdds(odds: any[] | undefined, hasDraw: boolean): MarketOdds | 
 /** Real ATP/WTA rankings (top 150) from ESPN. Players outside the top 150 stay unranked. */
 async function applyTennisRankings(matches: Match[]) {
   const tennis = matches.filter((m) => m.sport === "tennis");
-  for (const tour of ["atp", "wta"]) {
-    const ms = tennis.filter((m) => m.espn?.league === tour);
-    if (!ms.length) continue;
+  const tours = ["atp", "wta"].filter((tour) => tennis.some((m) => m.espn?.league === tour));
+  await pool(tours, 2, async (tour) => {
     const ranks = await fetchRankings(tour);
-    for (const m of ms) {
+    for (const m of tennis.filter((m) => m.espn?.league === tour)) {
       m.home.rank = ranks.get(norm(m.home.name));
       m.away.rank = ranks.get(norm(m.away.name));
     }
-  }
+  });
 }
 
 export async function fetchRankings(tour: string): Promise<Map<string, number>> {
@@ -168,7 +168,11 @@ export async function fetchEspnContext(m: Match): Promise<Record<string, unknown
   if (!s) return {};
   const injuries = (s.injuries ?? []).map((t: any) => ({
     team: t?.team?.displayName,
-    out: (t?.injuries ?? []).slice(0, 12).map((i: any) => `${i?.athlete?.displayName} (${i?.status ?? i?.type?.description ?? "?"})`),
+    // A nameless entry would read as "undefined (Out)" in the alert, so it is dropped.
+    out: (t?.injuries ?? [])
+      .filter((i: any) => typeof i?.athlete?.displayName === "string" && i.athlete.displayName)
+      .slice(0, 12)
+      .map((i: any) => `${i.athlete.displayName} (${i?.status ?? i?.type?.description ?? "?"})`),
   }));
   const news = (s.news?.articles ?? []).slice(0, 6).map((a: any) => a?.headline).filter(Boolean);
   const h2h = (s.headToHeadGames?.[0]?.events ?? []).slice(0, 5).map((e: any) => ({
