@@ -1,6 +1,6 @@
 {
   "name": "sports-predictor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Free sports match digest and value-bet finder that sends to Telegram",
