@@ -25,11 +25,13 @@ export interface BookPrice {
   draw?: number;
   /** Page for this match at the bookmaker, if the odds service gave one. */
   link?: string;
+  /** When the bookmaker last moved this price (ISO), if the service says. Missing = unknown age. */
+  updatedAt?: string;
 }
 
 export interface MarketOdds {
   books: BookPrice[];
-  /** Where the odds came from: "The Odds API" or "ESPN". */
+  /** Where the odds came from: "The Odds API", "OddsPapi" or "ESPN". */
   source: string;
 }
 
@@ -46,9 +48,13 @@ export interface Fair {
   source: string;
   /** "sharp" = Pinnacle, "consensus" = median of 3+ books, "single" = one book only. */
   kind: "sharp" | "consensus" | "single";
+  /** Newest price that went into it (ISO), when the odds service timestamps prices. */
+  asOf?: string;
+  /** True when every price behind it is older than MAX_ODDS_AGE_MINUTES: fine to show, never to bet on. */
+  stale?: boolean;
 }
 
-export type BestPrices = Partial<Record<Side, { price: number; book: string; link?: string }>>;
+export type BestPrices = Partial<Record<Side, { price: number; book: string; bookKey: string; link?: string; updatedAt?: string }>>;
 
 export interface Value {
   side: Side;
@@ -60,6 +66,12 @@ export interface Value {
   fairPrice: number;
   /** Expected value in percent: fair probability × price − 1. */
   evPct: number;
+  /** Fair probability of the backed side, as used for the edge and the stake. */
+  prob: number;
+  /** Advised stake as a percentage of bankroll (fractional Kelly, capped). */
+  stakePct?: number;
+  /** When the offered price was last seen to move (ISO), if known. */
+  priceAt?: string;
 }
 
 export interface Match {

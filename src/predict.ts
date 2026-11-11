@@ -1,15 +1,23 @@
 /** Turn one match (with odds, if any) into a prediction. Pure: no network. */
 import { config } from "./config.ts";
-import { bestPrices, bookLink, fairProbs, findValue } from "./odds/fair.ts";
+import { bestPrices, bookLink, fairProbs, fairWithout, findValue } from "./odds/fair.ts";
+import { stakePct } from "./odds/stake.ts";
 import { modelProbs } from "./model/probability.ts";
 import type { Match, Prediction } from "./types.ts";
 
-export function predict(m: Match): Prediction {
+export function predict(m: Match, now = new Date()): Prediction {
   const { probs: model, dataPoints } = modelProbs(m);
-  const fair = fairProbs(m.odds, m.hasDraw);
-  const best = bestPrices(m.odds, m.hasDraw, config.bookmakers);
+  // Prices older than the age limit are shown but not bet on.
+  const opts = { now, maxAgeMinutes: config.maxOddsAgeMinutes };
+  const fair = fairProbs(m.odds, m.hasDraw, opts);
+  const best = bestPrices(m.odds, m.hasDraw, config.bookmakers, opts);
   const betLink = bookLink(m.odds, config.bookmakers.length ? config.bookmakers : ["1xbet"]);
-  const value = findValue(fair, best, config.minEdgePct);
+  const value = findValue(fair, best, config.minEdgePct, {
+    maxEdgePct: config.maxEdgePct,
+    consensusMinEdgePct: config.minEdgeConsensusPct,
+    without: (bookKey) => fairWithout(m.odds, m.hasDraw, bookKey, opts),
+  });
+  if (value) value.stakePct = stakePct(value.prob, value.price, { fraction: config.kellyFraction, capPct: config.maxStakePct });
   const confidence: Prediction["confidence"] = fair?.kind === "sharp" ? "high" : fair ? "medium" : "low";
   return {
     match: m, model, modelDataPoints: dataPoints, fair, final: fair?.probs ?? model, best, betLink, value,

@@ -1,6 +1,19 @@
 import { config } from "../config.ts";
 import type { Prediction, Probabilities } from "../types.ts";
 
+/** "quarter Kelly" reads better than "0.25 Kelly" for the usual settings. */
+const kellyLabel = (f: number) => (f === 0.25 ? "quarter Kelly" : f === 0.5 ? "half Kelly" : f === 1 ? "full Kelly" : `${f}× Kelly`);
+
+/** "6m ago" / "2h 10m ago", or nothing when the odds service doesn't say. */
+function ago(iso: string | undefined, now: Date): string | undefined {
+  if (!iso) return undefined;
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return undefined;
+  const mins = Math.round((now.getTime() - t) / 60_000);
+  if (mins < 0 || mins > 7 * 24 * 60) return undefined;
+  return mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
+}
+
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const pct = (p: number) => `${Math.round(p * 100)}%`;
 const attr = (s: string) => esc(s).replace(/"/g, "&quot;");
@@ -75,6 +88,10 @@ export function formatAlert(p: Prediction, now = new Date()): string {
   L.push(`📊 Fair chances (${esc(p.fair!.source)}): ${probLine(p, p.final)}`);
   L.push(`   Stats model: ${probLine(p, p.model)}`);
   L.push(`➜ Fair price ${v.fairPrice.toFixed(2)}, offered ${v.price.toFixed(2)}: expected value <b>+${v.evPct.toFixed(1)}%</b>`);
+  if (v.stakePct) {
+    const money = config.bankroll ? ` ≈ ${((v.stakePct / 100) * config.bankroll).toFixed(2)}` : "";
+    L.push(`💵 Stake: <b>${v.stakePct.toFixed(2)}% of bankroll</b>${money} (${kellyLabel(config.kellyFraction)}, capped at ${config.maxStakePct}%)`);
+  }
   if (p.best) {
     const b = p.best;
     const parts = [
@@ -95,7 +112,8 @@ export function formatAlert(p: Prediction, now = new Date()): string {
     for (const r of p.risks.slice(0, 3)) L.push(` • ${esc(r)}`);
   }
   L.push("");
-  L.push(`Confidence: ${p.confidence} · prices move, so check the current odds${m.link && /^https:\/\//.test(m.link) ? ` · <a href="${attr(m.link)}">match page</a>` : ""}`);
+  const seen = ago(v.priceAt, now);
+  L.push(`Confidence: ${p.confidence}${seen ? ` · price last moved ${seen}` : ""} · prices move, so check the current odds${m.link && /^https:\/\//.test(m.link) ? ` · <a href="${attr(m.link)}">match page</a>` : ""}`);
   return L.join("\n");
 }
 

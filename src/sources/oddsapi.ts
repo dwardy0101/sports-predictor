@@ -5,6 +5,10 @@
  *  - each call is limited to that time range,
  *  - OddsBudget caps how much each day may spend.
  * Listing the sports (/sports) is free.
+ *
+ * Matches passed as `watch` ride along for free: they are only added to calls
+ * that are happening anyway, never a reason to make one. That is how the later
+ * sharp price for an already-sent value bet is collected (closing line value).
  */
 import { config, ESPN_LEAGUES, ODDS_PRIORITY } from "../config.ts";
 import { getJson, getJsonRes, httpsLink, isoSec } from "../http.ts";
@@ -14,26 +18,31 @@ import type { BookPrice, Match } from "../types.ts";
 const BASE = "https://api.the-odds-api.com/v4";
 
 /** Returns the matches left without odds only because the budget ran out (so they can be retried). */
-export async function attachOdds(matches: Match[], budget: OddsBudget): Promise<Match[]> {
+export async function attachOdds(matches: Match[], budget: OddsBudget, watch: Match[] = []): Promise<Match[]> {
   const deferred: Match[] = [];
   if (!config.oddsApiKey || !matches.length) return deferred;
 
   const byKey = new Map<string, Match[]>();
-  const add = (k: string, m: Match) => byKey.set(k, [...(byKey.get(k) ?? []), m]);
+  const extra = new Map<string, Match[]>();
+  const add = (into: Map<string, Match[]>, k: string, m: Match) => into.set(k, [...(into.get(k) ?? []), m]);
   const leagues = Object.values(ESPN_LEAGUES).flat();
-  for (const m of matches) {
-    const lg = leagues.find((l) => m.espn?.league === l.league);
-    if (lg?.oddsKey) add(lg.oddsKey, m);
-  }
+  const route = (ms: Match[], into: Map<string, Match[]>) => {
+    for (const m of ms) {
+      const lg = leagues.find((l) => m.espn?.league === l.league);
+      if (lg?.oddsKey) add(into, lg.oddsKey, m);
+    }
+  };
+  route(matches, byKey);
+  route(watch, extra);
 
   // Tennis odds keys are per tournament, e.g. tennis_atp_paris_masters.
-  const tennis = matches.filter((m) => m.sport === "tennis");
+  const tennis = [...matches, ...watch].filter((m) => m.sport === "tennis");
   if (tennis.length) {
     const sports = await getJson<any[]>(`${BASE}/sports?apiKey=${config.oddsApiKey}`);
     const active = (sports ?? []).filter((s) => s.active && /^tennis_/.test(s.key));
     for (const m of tennis) {
       const s = active.find((s) => sameTournament(m, s));
-      if (s) add(s.key, m);
+      if (s) add(matches.includes(m) ? byKey : extra, s.key, m);
     }
   }
 
@@ -41,12 +50,13 @@ export async function attachOdds(matches: Match[], budget: OddsBudget): Promise<
   const rank = (k: string) => { const i = ODDS_PRIORITY.indexOf(k); return i < 0 ? ODDS_PRIORITY.length : i; };
   const queue = [...byKey].sort((a, b) => rank(a[0]) - rank(b[0]) || b[1].length - a[1].length);
   for (let i = 0; i < queue.length; i++) {
-    const [sportKey, ms] = queue[i];
+    const [sportKey, fresh] = queue[i];
     if (!budget.canSpend()) {
       console.warn(`[odds] budget limit reached (${budget.summary()}); ${queue.length - i} sport(s) left unpriced`);
       for (const [, rest] of queue.slice(i)) deferred.push(...rest);
       break;
     }
+    const ms = [...fresh, ...(extra.get(sportKey) ?? [])];
     const from = new Date(Math.min(...ms.map((m) => +m.start)) - 3600_000);
     const to = new Date(Math.max(...ms.map((m) => +m.start)) + 3600_000);
     const { data, headers } = await getJsonRes<any[]>(
@@ -87,7 +97,7 @@ function sameEvent(m: Match, ev: any): boolean {
 }
 
 const tokens = (s: string) =>
-  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ")
+  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9 ]/g, " ")
     .split(/\s+/).filter((w) => w.length > 2 && !["the", "club", "fc"].includes(w));
 
 /**
@@ -110,7 +120,9 @@ export function parseBooks(ev: any, m: Match): BookPrice[] {
   const out: BookPrice[] = [];
   for (const bk of ev.bookmakers ?? []) {
     const h2h = bk.markets?.find((x: any) => x.key === "h2h");
-    const p: Partial<BookPrice> = { key: bk.key, title: bk.title, link: httpsLink(bk.link) };
+    // When the bookmaker last moved this price. The market's own stamp is the precise one.
+    const updatedAt = iso(h2h?.last_update ?? bk.last_update);
+    const p: Partial<BookPrice> = { key: bk.key, title: bk.title, link: httpsLink(bk.link), updatedAt };
     for (const o of h2h?.outcomes ?? []) {
       if (o.name === "Draw") { p.draw = o.price; continue; }
       const sh = nameScore(o.name, m.home.name), sa = nameScore(o.name, m.away.name);
@@ -120,4 +132,12 @@ export function parseBooks(ev: any, m: Match): BookPrice[] {
     if (p.home && p.away) out.push(p as BookPrice);
   }
   return out;
+}
+
+/** The Odds API sends ISO strings; older responses sometimes send unix seconds. */
+function iso(v: unknown): string | undefined {
+  if (typeof v === "number" && Number.isFinite(v)) return new Date(v * 1000).toISOString();
+  if (typeof v !== "string" || !v) return undefined;
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? new Date(t).toISOString() : undefined;
 }

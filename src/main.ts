@@ -49,7 +49,7 @@ async function main() {
   const ready = fresh.filter((m) => !held.has(m));
   if (!ready.length) return;
 
-  const preds = ready.map(predict);
+  const preds = ready.map((m) => predict(m, now));
   const shown = preds.filter((p) => config.includeUnrated || p.fair || p.modelDataPoints > 0);
   const values = shown.filter((p) => p.value);
   console.log(`[run] ${shown.length} to show (${preds.length - shown.length} with no data skipped), ${values.length} value bet(s)`);

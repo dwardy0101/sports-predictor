@@ -151,10 +151,22 @@ export function oddspapiBooks(): string[] {
   return [...new Set(["pinnacle", ...(config.bookmakers.length ? config.bookmakers : ["1xbet"])])].slice(0, 2);
 }
 
+/**
+ * Does this match still need a sharp price? Having *some* price is not enough: a
+ * single bookmaker can never show value against itself (`findValue` refuses a
+ * "single" fair price), so a tennis match priced by one soft book used to be
+ * dropped here and could never produce a value bet. OddsPapi is asked whenever
+ * there is no Pinnacle price and too few books for a consensus.
+ */
+export function needsSharpOdds(m: Match): boolean {
+  const books = m.odds?.books ?? [];
+  return !books.some((b) => b.key.toLowerCase() === "pinnacle") && books.length < 3;
+}
+
 /** Returns the matches still unpriced only because the budget ran out (so they can be retried). */
 export async function attachPapiOdds(matches: Match[], now = new Date()): Promise<Match[]> {
   if (!config.oddspapiKey) return [];
-  const needy = matches.filter((m) => SPORT_ID[m.sport] && !m.odds?.books.length);
+  const needy = matches.filter((m) => SPORT_ID[m.sport] && needsSharpOdds(m));
   if (!needy.length) return [];
   let blocked = false;
 
@@ -179,7 +191,9 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
     // about once a day, and straight away if nothing matches and the list is a few hours old.
     const refresh = async (sid: number) => {
       const list = await spend("/tournaments", { sportId: sid });
-      if (Array.isArray(list)) { cache.tournaments[sid] = { at: now.getTime(), list: list.filter((t: Tournament) => worthKeeping(t, sid)) }; saveCache(cache); }
+      // Only tournaments that can actually be picked are kept: the raw tennis list is ~11,000
+      // entries, nearly all with no fixtures, which made the saved cache megabytes of dead weight.
+      if (Array.isArray(list)) { cache.tournaments[sid] = { at: now.getTime(), list: list.filter((t: Tournament) => eligible(t, sid)) }; saveCache(cache); }
     };
     const pick = () => {
       const lists: Record<number, Tournament[]> = {};
@@ -245,7 +259,7 @@ export async function attachPapiOdds(matches: Match[], now = new Date()): Promis
       if (books.length) { m.odds = { books, source: "OddsPapi" }; matched++; }
     }
     console.log(`[oddspapi] priced ${matched} of ${needy.length} match(es) from ${ids.length} tournament(s); ${budget.summary()}`);
-    return blocked ? needy.filter((m) => !m.odds?.books.length) : [];
+    return blocked ? needy.filter(needsSharpOdds) : [];
   } finally {
     budget.save(BUDGET);
   }
