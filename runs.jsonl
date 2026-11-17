@@ -97,3 +97,4 @@
 {"at":"2026-11-17T18:17:17.587Z","found":4,"fresh":4,"priced":1,"sharp":1,"shown":3,"values":0,"held":0,"http":{"ok":44,"failed":0},"sports":["nba","wnba","football","tennis","dota2","cs2"]}
 {"at":"2026-11-17T20:17:17.376Z","found":1,"fresh":1,"priced":0,"sharp":0,"shown":0,"values":0,"held":0,"http":{"ok":37,"failed":0},"sports":["nba","wnba","football","tennis","dota2","cs2"]}
 {"at":"2026-11-17T22:17:17.418Z","found":1,"fresh":1,"priced":1,"sharp":1,"shown":1,"values":0,"held":0,"http":{"ok":36,"failed":0},"sports":["nba","wnba","football","tennis","dota2","cs2"]}
+{"at":"2026-11-17T22:24:37.532Z","found":1,"fresh":0,"priced":0,"sharp":0,"shown":0,"values":0,"held":0,"http":{"ok":35,"failed":0},"sports":["nba","wnba","football","tennis","dota2","cs2"]}
